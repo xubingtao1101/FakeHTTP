@@ -34,7 +34,7 @@
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-#define VERSION "0.9.0"
+#define VERSION "0.9.1"
 
 #define E(...) logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
 
@@ -374,9 +374,9 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         E("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source), dst_ip,
           ntohs(tcph->dest));
 
-        goto ret_accept_mark;
+        goto ret_mark_repeat;
     } else if (tcp_payload_len > 0) {
-        goto ret_accept_mark;
+        goto ret_mark_repeat;
     } else if (tcph->ack) {
         E("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
           ntohs(tcph->dest));
@@ -401,8 +401,8 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 ret_accept:
     return nfq_set_verdict(qh, pkt_id, NF_ACCEPT, 0, NULL);
 
-ret_accept_mark:
-    return nfq_set_verdict2(qh, pkt_id, NF_ACCEPT, g_fwmark, 0, NULL);
+ret_mark_repeat:
+    return nfq_set_verdict2(qh, pkt_id, NF_REPEAT, g_fwmark, 0, NULL);
 }
 
 

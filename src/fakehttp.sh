@@ -20,7 +20,7 @@
 
 set -eu
 
-VERSION=0.9.0
+VERSION=0.9.1
 
 PROGNAME=fakehttp
 FAKEHTTPNFQ=fakehttp_nfq
@@ -65,8 +65,9 @@ find_fakehttp_nfq()
 }
 
 
-cleanup_ipt()
+cleanup_ipt_090()
 {
+    # Clean up for FakeHTTP v0.9.0
     iptables -t mangle -F FAKEHTTP
     iptables -t mangle -D PREROUTING -j FAKEHTTP
     iptables -t mangle -X FAKEHTTP
@@ -79,17 +80,24 @@ cleanup_ipt()
 }
 
 
+cleanup_ipt()
+{
+    cleanup_ipt_090
+
+    iptables -t mangle -F FAKEHTTP
+    iptables -t mangle -D INPUT -j FAKEHTTP
+    iptables -t mangle -D FORWARD -j FAKEHTTP
+    iptables -t mangle -X FAKEHTTP
+}
+
+
 setup_ipt()
 {
-    iptables -t mangle -N FAKEHTTPMARK
-    iptables -t mangle -I INPUT -j FAKEHTTPMARK
-    iptables -t mangle -I FORWARD -j FAKEHTTPMARK
-    iptables -t mangle -I OUTPUT -j FAKEHTTPMARK
-    iptables -t mangle -A FAKEHTTPMARK -m mark --mark "$OPT_FWMARK" -j CONNMARK --save-mark
-
     iptables -t mangle -N FAKEHTTP
-    iptables -t mangle -I PREROUTING -j FAKEHTTP
+    iptables -t mangle -I INPUT -j FAKEHTTP
+    iptables -t mangle -I FORWARD -j FAKEHTTP
     # exclude marked packets
+    iptables -t mangle -A FAKEHTTP -m mark --mark "$OPT_FWMARK" -j CONNMARK --save-mark
     iptables -t mangle -A FAKEHTTP -m connmark --mark "$OPT_FWMARK" -j CONNMARK --restore-mark
     iptables -t mangle -A FAKEHTTP -m mark --mark "$OPT_FWMARK" -j RETURN
     # exclude local IPs
