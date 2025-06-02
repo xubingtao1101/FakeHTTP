@@ -12,7 +12,8 @@ CROSS_BASE="$CROSS_DIR/$CROSS_TRIPLET"
 CROSS_SRC="$CROSS_BASE/src"
 CROSS_USR="$CROSS_BASE/$CROSS_TRIPLET/sysroot/usr"
 PATH="$CROSS_BASE/bin:$PATH"
-export PATH
+PKG_CONFIG_PATH="$CROSS_DIR/$CROSS_TRIPLET/$CROSS_TRIPLET/sysroot/usr/lib/pkgconfig"
+export PATH PKG_CONFIG_PATH
 
 libmnl_name=libmnl-1.0.5
 libmnl_tar=$libmnl_name.tar.bz2

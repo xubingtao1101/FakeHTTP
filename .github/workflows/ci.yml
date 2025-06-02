@@ -111,7 +111,6 @@ jobs:
       - name: Set up toolchain for ${{ matrix.name }}
         run: |
           CROSS_TOOLCHAIN_URL="https://github.com/cross-tools/musl-cross/releases/download/20250520/${{ matrix.triplet }}.tar.xz"
-          PKG_CONFIG_PATH="${{ env.cross_dir }}/${{ matrix.triplet }}/${{ matrix.triplet }}/sysroot/usr/lib/pkgconfig"
 
           sudo mkdir -m 777 -p "${{ env.cross_dir }}"
           env \
@@ -119,7 +118,6 @@ jobs:
               CROSS_TOOLCHAIN_URL="$CROSS_TOOLCHAIN_URL" \
               CROSS_TOOLCHAIN_SHA256="${{ matrix.sha256 }}" \
               CROSS_DIR="${{ env.cross_dir }}" \
-              PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
               .github/workflows/scripts/cross-setup.sh
       - name: Build for ${{ matrix.name }}
         run: |
