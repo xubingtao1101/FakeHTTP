@@ -1,5 +1,5 @@
 /*
- * fakehttp_nfq.c - FakeHTTP_NFQ
+ * fakehttp.c - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
  *
  * Copyright (C) 2025  MikeWang000000
  *
@@ -19,6 +19,8 @@
 
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -30,16 +32,17 @@
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include <sys/wait.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-#define VERSION "0.9.1"
+#define VERSION "0.9.2"
 
 #define E(...) logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
 
 static int g_sockfd = 0;
-static int g_chkonly = 0;
+static int g_exit = 0;
 static int g_repeat = 3;
 static uint32_t g_fwmark = 512;
 static uint32_t g_nfqnum = 512;
@@ -49,15 +52,10 @@ static const char *g_hostname = NULL;
 
 static void print_usage(const char *name)
 {
-    if (g_chkonly) {
-        return;
-    }
-
     fprintf(stderr,
             "Usage: %s [options]\n"
             "\n"
             "Options:\n"
-            "  -c                 check options and exit\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
             "  -i <interface>     either interface name (required)\n"
             "  -m <mark>          fwmark for bypassing the queue\n"
@@ -66,7 +64,7 @@ static void print_usage(const char *name)
             "times\n"
             "  -t <ttl>           TTL for generated packets\n"
             "\n"
-            "FakeHTTP_NFQ version " VERSION "\n",
+            "FakeHTTP version " VERSION "\n",
             name);
 }
 
@@ -91,6 +89,219 @@ static void logger(const char *funcname, const char *filename,
     va_end(args);
     fputc('\n', stderr);
     fflush(stderr);
+}
+
+
+static void signal_handler(int sig)
+{
+    switch (sig) {
+        case SIGINT:
+        case SIGTERM:
+            g_exit = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+
+static int signal_setup(void)
+{
+    struct sigaction sa;
+    int res;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = SIG_IGN;
+
+    res = sigaction(SIGPIPE, &sa, NULL);
+    if (res < 0) {
+        E("ERROR: sigaction(): %s", strerror(errno));
+        return -1;
+    }
+
+    res = sigaction(SIGHUP, &sa, NULL);
+    if (res < 0) {
+        E("ERROR: sigaction(): %s", strerror(errno));
+        return -1;
+    }
+
+    sa.sa_handler = signal_handler;
+
+    res = sigaction(SIGINT, &sa, NULL);
+    if (res < 0) {
+        E("ERROR: sigaction(): %s", strerror(errno));
+        return -1;
+    }
+
+    res = sigaction(SIGTERM, &sa, NULL);
+    if (res < 0) {
+        E("ERROR: sigaction(): %s", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+
+static int execute_command(char **argv, int silent)
+{
+    int res, status, fd, i;
+    pid_t pid;
+
+    pid = fork();
+    if (pid < 0) {
+        E("ERROR: fork(): %s", strerror(errno));
+        return -1;
+    }
+
+    if (!pid) {
+        if (silent) {
+            fd = open("/dev/null", O_WRONLY);
+            if (fd < 0) {
+                E("ERROR: open(): %s", strerror(errno));
+                _exit(EXIT_FAILURE);
+            }
+            res = dup2(fd, STDOUT_FILENO);
+            if (res < 0) {
+                E("ERROR: dup2(): %s", strerror(errno));
+                _exit(EXIT_FAILURE);
+            }
+            res = dup2(fd, STDERR_FILENO);
+            if (res < 0) {
+                E("ERROR: dup2(): %s", strerror(errno));
+                _exit(EXIT_FAILURE);
+            }
+            close(fd);
+        }
+
+        execvp(argv[0], argv);
+
+        E("ERROR: execvp(): %s", strerror(errno));
+        fprintf(stderr, "failed to execute: %s", argv[0]);
+        for (i = 1; argv[i]; i++) {
+            fprintf(stderr, " %s", argv[i]);
+        }
+        fputc('\n', stderr);
+        fflush(stderr);
+
+        _exit(EXIT_FAILURE);
+    }
+
+    if (waitpid(pid, &status, 0) < 0) {
+        E("ERROR: waitpid(): %s", strerror(errno));
+        return -1;
+    }
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        return 0;
+    }
+
+    return -1;
+}
+
+
+static void ipt_rules_cleanup(void)
+{
+    size_t i, ipt_cmds_cnt;
+    char *ipt_cmds[][32] = {
+        {"iptables", "-t", "mangle", "-F", "FAKEHTTP", NULL},
+        {"iptables", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP", NULL},
+        {"iptables", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP", NULL},
+        {"iptables", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
+
+    ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
+
+    for (i = 0; i < ipt_cmds_cnt; i++) {
+        execute_command(ipt_cmds[i], 1);
+    }
+}
+
+
+static int ipt_rules_setup(void)
+{
+    char fwmark_str[32], nfqnum_str[32], iface_str[32];
+    size_t i, ipt_cmds_cnt;
+    int res;
+    char *ipt_cmds[][32] = {
+        {"iptables", "-t", "mangle", "-N", "FAKEHTTP", NULL},
+        {"iptables", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP", NULL},
+        {"iptables", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP", NULL},
+
+        /*
+            exclude marked packets
+        */
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark", "--mark",
+         fwmark_str, "-j", "CONNMARK", "--save-mark", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connmark",
+         "--mark", fwmark_str, "-j", "CONNMARK", "--restore-mark", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark", "--mark",
+         fwmark_str, "-j", "RETURN", NULL},
+
+        /*
+            exclude local IPs
+        */
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "0.0.0.0/8", "-j",
+         "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "10.0.0.0/8",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "100.64.0.0/10",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "127.0.0.0/8",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "169.254.0.0/16",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "172.16.0.0/12",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "192.168.0.0/16",
+         "-j", "RETURN", NULL},
+
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "224.0.0.0/3",
+         "-j", "RETURN", NULL},
+
+        /*
+            send to nfqueue
+        */
+        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-i", iface_str, "-p",
+         "tcp", "--tcp-flags", "ACK,FIN,RST", "ACK", "-j", "NFQUEUE",
+         "--queue-num", nfqnum_str, NULL}};
+
+    ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
+
+    res = snprintf(fwmark_str, sizeof(fwmark_str), "%" PRIu32, g_fwmark);
+    if (res < 0 || (size_t) res >= sizeof(fwmark_str)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    res = snprintf(nfqnum_str, sizeof(nfqnum_str), "%" PRIu32, g_nfqnum);
+    if (res < 0 || (size_t) res >= sizeof(nfqnum_str)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    res = snprintf(iface_str, sizeof(iface_str), "%s", g_iface);
+    if (res < 0 || (size_t) res >= sizeof(iface_str)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    for (i = 0; i < ipt_cmds_cnt; i++) {
+        res = execute_command(ipt_cmds[i], 0);
+        if (res) {
+            E("ERROR: execute_command()");
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 
@@ -423,11 +634,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "ch:i:m:n:r:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:")) != -1) {
         switch (opt) {
-            case 'c':
-                g_chkonly = 1;
-                break;
             case 'h':
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
                     fprintf(stderr, "%s: hostname is too long.\n", argv[0]);
@@ -497,9 +705,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (!g_chkonly) {
-        E("FakeHTTP version " VERSION);
-    }
+    E("FakeHTTP version " VERSION);
 
     srand(time(NULL));
 
@@ -574,22 +780,37 @@ int main(int argc, char *argv[])
 
     fd = nfq_fd(h);
 
-    if (g_chkonly) {
-        exitcode = EXIT_SUCCESS;
-        goto destroy_queue;
+    /*
+        Iptables
+    */
+    ipt_rules_cleanup();
+    res = ipt_rules_setup();
+    if (res) {
+        E("ERROR: ipt_rules_setup()");
+        goto cleanup_iptables;
+    }
+
+    /*
+        Signals
+    */
+    res = signal_setup();
+    if (res) {
+        E("ERROR: signal_setup()");
+        goto cleanup_iptables;
     }
 
     /*
         Main Loop
     */
-    for (;;) {
+    while (!g_exit) {
         recv_len = recv(fd, buff, buffsize, 0);
         if (recv_len < 0) {
             if (errno == EINTR) {
-                continue;
+                g_exit = 1;
+                goto exit_success;
             }
             E("ERROR: recv(): %s", strerror(errno));
-            goto destroy_queue;
+            goto cleanup_iptables;
         }
         res = nfq_handle_packet(h, buff, recv_len);
         if (res < 0) {
@@ -597,6 +818,13 @@ int main(int argc, char *argv[])
             continue;
         }
     }
+
+exit_success:
+    E("exiting normally...");
+    exitcode = EXIT_SUCCESS;
+
+cleanup_iptables:
+    ipt_rules_cleanup();
 
 destroy_queue:
     nfq_destroy_queue(qh);
