@@ -242,12 +242,6 @@ static int ipt_rules_setup(void)
          NULL},
 
         /*
-            exclude big packets
-        */
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "length",
-         "!", "--length", "0:120", "-j", "RETURN", NULL},
-
-        /*
             exclude packets from connections with more than 32 packets
         */
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connbytes",
