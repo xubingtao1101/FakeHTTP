@@ -177,23 +177,26 @@ static int execute_command(char **argv, int silent)
         execvp(argv[0], argv);
 
         E("ERROR: execvp(): %s", strerror(errno));
-        fprintf(stderr, "failed to execute: %s", argv[0]);
-        for (i = 1; argv[i]; i++) {
-            fprintf(stderr, " %s", argv[i]);
-        }
-        fputc('\n', stderr);
-        fflush(stderr);
 
         _exit(EXIT_FAILURE);
     }
 
     if (waitpid(pid, &status, 0) < 0) {
         E("ERROR: waitpid(): %s", strerror(errno));
-        return -1;
+        goto child_failed;
     }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         return 0;
+    }
+
+child_failed:
+    if (!silent) {
+        fprintf(stderr, "failed command is: %s", argv[0]);
+        for (i = 1; argv[i]; i++) {
+            fprintf(stderr, " %s", argv[i]);
+        }
+        fputc('\n', stderr);
     }
 
     return -1;
@@ -204,10 +207,15 @@ static void ipt_rules_cleanup(void)
 {
     size_t i, ipt_cmds_cnt;
     char *ipt_cmds[][32] = {
-        {"iptables", "-t", "mangle", "-F", "FAKEHTTP", NULL},
-        {"iptables", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP", NULL},
-        {"iptables", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP", NULL},
-        {"iptables", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
+        {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP",
+         NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP",
+         NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
 
     ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
 
@@ -223,55 +231,72 @@ static int ipt_rules_setup(void)
     size_t i, ipt_cmds_cnt;
     int res;
     char *ipt_cmds[][32] = {
-        {"iptables", "-t", "mangle", "-N", "FAKEHTTP", NULL},
-        {"iptables", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP", NULL},
-        {"iptables", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP", NULL},
+        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
+         NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
+         NULL},
+
+        /*
+            exclude big packets
+        */
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "length",
+         "!", "--length", "0:120", "-j", "RETURN", NULL},
+
+        /*
+            exclude packets from connections with more than 32 packets
+        */
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connbytes",
+         "!", "--connbytes", "0:32", "--connbytes-dir", "both",
+         "--connbytes-mode", "packets", "-j", "RETURN", NULL},
 
         /*
             exclude marked packets
         */
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark", "--mark",
-         fwmark_str, "-j", "CONNMARK", "--save-mark", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark",
+         "--mark", fwmark_str, "-j", "CONNMARK", "--save-mark", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connmark",
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connmark",
          "--mark", fwmark_str, "-j", "CONNMARK", "--restore-mark", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark", "--mark",
-         fwmark_str, "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark",
+         "--mark", fwmark_str, "-j", "RETURN", NULL},
 
         /*
             exclude local IPs
         */
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "0.0.0.0/8", "-j",
-         "RETURN", NULL},
-
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "10.0.0.0/8",
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s", "0.0.0.0/8",
          "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "100.64.0.0/10",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "10.0.0.0/8", "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "127.0.0.0/8",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "100.64.0.0/10", "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "169.254.0.0/16",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "127.0.0.0/8", "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "172.16.0.0/12",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "169.254.0.0/16", "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "192.168.0.0/16",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "172.16.0.0/12", "-j", "RETURN", NULL},
 
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-s", "224.0.0.0/3",
-         "-j", "RETURN", NULL},
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "192.168.0.0/16", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-s",
+         "224.0.0.0/3", "-j", "RETURN", NULL},
 
         /*
             send to nfqueue
         */
-        {"iptables", "-t", "mangle", "-A", "FAKEHTTP", "-i", iface_str, "-p",
-         "tcp", "--tcp-flags", "ACK,FIN,RST", "ACK", "-j", "NFQUEUE",
-         "--queue-num", nfqnum_str, NULL}};
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-i", iface_str,
+         "-p", "tcp", "--tcp-flags", "ACK,FIN,RST", "ACK", "-j", "NFQUEUE",
+         "--queue-bypass", "--queue-num", nfqnum_str, NULL}};
 
     ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
 
@@ -555,7 +580,11 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     tcp_payload_len = pkt_len - iph_len - tcph_len;
 
-    if (tcph->syn && tcph->ack) {
+    if (tcp_payload_len > 0) {
+        E("%s:%u ===PAYLOAD(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
+          ntohs(tcph->dest));
+        goto ret_mark_repeat;
+    } else if (tcph->syn && tcph->ack) {
         E("%s:%u ===SYN-ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
           ntohs(tcph->dest));
 
@@ -586,8 +615,6 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
           ntohs(tcph->dest));
 
         goto ret_mark_repeat;
-    } else if (tcp_payload_len > 0) {
-        goto ret_mark_repeat;
     } else if (tcph->ack) {
         E("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
           ntohs(tcph->dest));
@@ -600,12 +627,13 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                 goto ret_accept;
             }
         }
-        E("(*) %s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
-          dst_ip, ntohs(tcph->dest));
+        E("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source), dst_ip,
+          ntohs(tcph->dest));
 
-        goto ret_accept;
+        goto ret_mark_repeat;
     } else {
-        E("WARNING: unexpected TCP packet (ignored)");
+        E("%s:%u ===(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
+          ntohs(tcph->dest));
         goto ret_accept;
     }
 
