@@ -12,6 +12,8 @@ on:
 jobs:
   Build:
     uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ github.event.inputs.version }}
 
   Release:
     permissions:
