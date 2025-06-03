@@ -5,6 +5,10 @@ STRIP=$(CROSS_PREFIX)strip
 override CFLAGS+=-O3 -std=c99 -pedantic -Wall -Wextra
 override LDFLAGS+=-lnetfilter_queue -lnfnetlink -lmnl
 
+ifdef VERSION
+    override CFLAGS += -DVERSION=\"$(VERSION)\"
+endif
+
 PREFIX=/usr/local
 BINDIR=$(PREFIX)/bin
 BUILDDIR=build

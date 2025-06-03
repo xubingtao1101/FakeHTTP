@@ -5,7 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version Number'
+        description: Version Number
+        type: string
         required: true
 
 jobs:

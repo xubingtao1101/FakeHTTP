@@ -37,7 +37,9 @@
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-#define VERSION "0.9.2"
+#ifndef VERSION
+#define VERSION "dev"
+#endif /* VERSION */
 
 #define E(...) logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
 
