@@ -652,7 +652,7 @@ int main(int argc, char *argv[])
     unsigned long long tmp;
     struct nfq_handle *h;
     struct nfq_q_handle *qh;
-    int res, fd, opt, exitcode;
+    int res, fd, opt, exitcode, err_cnt;
     ssize_t recv_len;
     char *buff;
 
@@ -830,24 +830,41 @@ int main(int argc, char *argv[])
     /*
         Main Loop
     */
+    err_cnt = 0;
     while (!g_exit) {
-        recv_len = recv(fd, buff, buffsize, 0);
-        if (recv_len < 0) {
-            if (errno == EINTR) {
-                g_exit = 1;
-                goto exit_success;
-            }
-            E("ERROR: recv(): %s", strerror(errno));
+        if (err_cnt >= 20) {
+            E("too many errors, exiting...");
             goto cleanup_iptables;
         }
+
+        recv_len = recv(fd, buff, buffsize, 0);
+        if (recv_len < 0) {
+            switch (errno) {
+                case EINTR:
+                    continue;
+                case EAGAIN:
+                case ETIMEDOUT:
+                case ENOBUFS:
+                    E("ERROR: recv(): %s", strerror(errno));
+                    err_cnt++;
+                    continue;
+                default:
+                    E("ERROR: recv(): %s", strerror(errno));
+                    err_cnt++;
+                    goto cleanup_iptables;
+            }
+        }
+
         res = nfq_handle_packet(h, buff, recv_len);
         if (res < 0) {
             E("ERROR: nfq_handle_packet()");
+            err_cnt++;
             continue;
         }
+
+        err_cnt = 0;
     }
 
-exit_success:
     E("exiting normally...");
     exitcode = EXIT_SUCCESS;
 
