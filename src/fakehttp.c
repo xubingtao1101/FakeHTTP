@@ -782,18 +782,6 @@ int main(int argc, char *argv[])
         goto close_socket;
     }
 
-    res = nfq_unbind_pf(h, AF_INET);
-    if (res < 0) {
-        E("ERROR: nfq_unbind_pf()");
-        goto close_nfq;
-    }
-
-    res = nfq_bind_pf(h, AF_INET);
-    if (res < 0) {
-        E("ERROR: nfq_bind_pf()");
-        goto close_nfq;
-    }
-
     qh = nfq_create_queue(h, g_nfqnum, &callback, NULL);
     if (!qh) {
         E("ERROR: nfq_create_queue()");
