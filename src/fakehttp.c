@@ -47,7 +47,8 @@
 static int g_sockfd = 0;
 static int g_exit = 0;
 static int g_repeat = 3;
-static uint32_t g_fwmark = 512;
+static uint32_t g_fwmark = 0x8000;
+static uint32_t g_fwmask = 0;
 static uint32_t g_nfqnum = 512;
 static uint8_t g_ttl = 3;
 static const char *g_iface = NULL;
@@ -66,6 +67,7 @@ static void print_usage(const char *name)
             "  -r <repeat>        duplicate generated packets for <repeat> "
             "times\n"
             "  -t <ttl>           TTL for generated packets\n"
+            "  -x <mask>          set the mask for fwmark\n"
             "\n"
             "FakeHTTP version " VERSION "\n",
             name);
@@ -230,7 +232,7 @@ static void ipt_rules_cleanup(void)
 
 static int ipt_rules_setup(void)
 {
-    char fwmark_str[32], nfqnum_str[32], iface_str[32];
+    char xmark_str[64], nfqnum_str[32], iface_str[32];
     size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
     int res;
     char *ipt_cmds[][32] = {
@@ -246,13 +248,14 @@ static int ipt_rules_setup(void)
             exclude marked packets
         */
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark",
-         "--mark", fwmark_str, "-j", "CONNMARK", "--save-mark", NULL},
+         "--mark", xmark_str, "-j", "CONNMARK", "--set-xmark", xmark_str,
+         NULL},
 
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connmark",
-         "--mark", fwmark_str, "-j", "CONNMARK", "--restore-mark", NULL},
+         "--mark", xmark_str, "-j", "MARK", "--set-xmark", xmark_str, NULL},
 
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "mark",
-         "--mark", fwmark_str, "-j", "RETURN", NULL},
+         "--mark", xmark_str, "-j", "RETURN", NULL},
 
         /*
             exclude local IPs
@@ -305,8 +308,9 @@ static int ipt_rules_setup(void)
     ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
     ipt_opt_cmds_cnt = sizeof(ipt_opt_cmds) / sizeof(*ipt_opt_cmds);
 
-    res = snprintf(fwmark_str, sizeof(fwmark_str), "%" PRIu32, g_fwmark);
-    if (res < 0 || (size_t) res >= sizeof(fwmark_str)) {
+    res = snprintf(xmark_str, sizeof(xmark_str), "%" PRIu32 "/%" PRIu32,
+                   g_fwmark, g_fwmask);
+    if (res < 0 || (size_t) res >= sizeof(xmark_str)) {
         E("ERROR: snprintf()");
         return -1;
     }
@@ -672,7 +676,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:x:")) != -1) {
         switch (opt) {
             case 'h':
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
@@ -692,7 +696,8 @@ int main(int argc, char *argv[])
                 }
                 break;
             case 'm':
-                if (sscanf(optarg, "%llu", &tmp) != 1 || tmp > UINT16_MAX) {
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp > UINT32_MAX) {
                     fprintf(stderr, "%s: invalid value for -m.\n", argv[0]);
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
@@ -700,8 +705,8 @@ int main(int argc, char *argv[])
                 g_fwmark = tmp;
                 break;
             case 'n':
-                if (sscanf(optarg, "%llu", &tmp) != 1 || !tmp ||
-                    tmp > UINT16_MAX) {
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp > UINT32_MAX) {
                     fprintf(stderr, "%s: invalid value for -n.\n", argv[0]);
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
@@ -709,7 +714,8 @@ int main(int argc, char *argv[])
                 g_nfqnum = tmp;
                 break;
             case 'r':
-                if (sscanf(optarg, "%llu", &tmp) != 1 || !tmp || tmp > 10) {
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp > 10) {
                     fprintf(stderr, "%s: invalid value for -r.\n", argv[0]);
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
@@ -725,10 +731,27 @@ int main(int argc, char *argv[])
                 }
                 g_ttl = tmp;
                 break;
+            case 'x':
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp > UINT32_MAX) {
+                    fprintf(stderr, "%s: invalid value for -x.\n", argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+                g_fwmask = tmp;
+                break;
             default:
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
         }
+    }
+
+    if (!g_fwmask) {
+        g_fwmask = g_fwmark;
+    } else if ((g_fwmark & g_fwmask) != g_fwmark) {
+        fprintf(stderr, "%s: invalid value for -m/-x.\n", argv[0]);
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
     }
 
     if (!g_hostname) {
