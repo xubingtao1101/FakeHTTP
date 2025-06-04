@@ -650,7 +650,7 @@ int main(int argc, char *argv[])
     struct nfq_q_handle *qh;
     int res, fd, opt, exitcode, err_cnt;
     ssize_t recv_len;
-    char *buff;
+    char *buff, *err_hint;
 
     exitcode = EXIT_FAILURE;
 
@@ -744,7 +744,14 @@ int main(int argc, char *argv[])
     */
     g_sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
     if (g_sockfd < 0) {
-        E("ERROR: socket(): %s", strerror(errno));
+        switch (errno) {
+            case EPERM:
+                err_hint = " (Are you root?)";
+                break;
+            default:
+                err_hint = "";
+        }
+        E("ERROR: socket(): %s%s", strerror(errno), err_hint);
         goto free_buff;
     }
 
@@ -774,13 +781,33 @@ int main(int argc, char *argv[])
     */
     h = nfq_open();
     if (!h) {
-        E("ERROR: nfq_open()");
+        switch (errno) {
+            case EPERM:
+                err_hint = " (Are you root?)";
+                break;
+            case EINVAL:
+                err_hint = " (Missing kernel module?)";
+                break;
+            default:
+                err_hint = "";
+        }
+        E("ERROR: nfq_open(): %s%s", strerror(errno), err_hint);
         goto close_socket;
     }
 
     qh = nfq_create_queue(h, g_nfqnum, &callback, NULL);
     if (!qh) {
-        E("ERROR: nfq_create_queue()");
+        switch (errno) {
+            case EPERM:
+                err_hint = " (Another process is running / Are you root?)";
+                break;
+            case EINVAL:
+                err_hint = " (Missing kernel module?)";
+                break;
+            default:
+                err_hint = "";
+        }
+        E("ERROR: nfq_create_queue(): %s%s", strerror(errno), err_hint);
         goto close_nfq;
     }
 
@@ -810,6 +837,9 @@ int main(int argc, char *argv[])
         E("ERROR: signal_setup()");
         goto cleanup_iptables;
     }
+
+    E("listening on %s, netfilter queue number %" PRIu32 "...", g_iface,
+      g_nfqnum);
 
     /*
         Main Loop
