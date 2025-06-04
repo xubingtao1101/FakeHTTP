@@ -230,7 +230,7 @@ static void ipt_rules_cleanup(void)
 static int ipt_rules_setup(void)
 {
     char fwmark_str[32], nfqnum_str[32], iface_str[32];
-    size_t i, ipt_cmds_cnt;
+    size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
     int res;
     char *ipt_cmds[][32] = {
         {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
@@ -240,13 +240,6 @@ static int ipt_rules_setup(void)
 
         {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
          NULL},
-
-        /*
-            exclude packets from connections with more than 32 packets
-        */
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP", "-m", "connbytes",
-         "!", "--connbytes", "0:32", "--connbytes-dir", "both",
-         "--connbytes-mode", "packets", "-j", "RETURN", NULL},
 
         /*
             exclude marked packets
@@ -294,7 +287,22 @@ static int ipt_rules_setup(void)
          "-p", "tcp", "--tcp-flags", "ACK,FIN,RST", "ACK", "-j", "NFQUEUE",
          "--queue-bypass", "--queue-num", nfqnum_str, NULL}};
 
+    char *ipt_opt_cmds[][32] = {
+        /*
+            exclude packets from connections with more than 32 packets
+        */
+        {"iptables", "-w", "-t", "mangle", "-I", "FAKEHTTP", "-m", "connbytes",
+         "!", "--connbytes", "0:32", "--connbytes-dir", "both",
+         "--connbytes-mode", "packets", "-j", "RETURN", NULL},
+
+        /*
+            exclude big packets
+        */
+        {"iptables", "-w", "-t", "mangle", "-I", "FAKEHTTP", "-m", "length",
+         "!", "--length", "0:120", "-j", "RETURN", NULL}};
+
     ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
+    ipt_opt_cmds_cnt = sizeof(ipt_opt_cmds) / sizeof(*ipt_opt_cmds);
 
     res = snprintf(fwmark_str, sizeof(fwmark_str), "%" PRIu32, g_fwmark);
     if (res < 0 || (size_t) res >= sizeof(fwmark_str)) {
@@ -320,6 +328,10 @@ static int ipt_rules_setup(void)
             E("ERROR: execute_command()");
             return -1;
         }
+    }
+
+    for (i = 0; i < ipt_opt_cmds_cnt; i++) {
+        execute_command(ipt_opt_cmds[i], 1);
     }
 
     return 0;
