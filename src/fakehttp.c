@@ -32,6 +32,7 @@
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink_queue.h>
@@ -661,6 +662,7 @@ int main(int argc, char *argv[])
     struct nfq_handle *h;
     struct nfq_q_handle *qh;
     int res, fd, opt, exitcode, err_cnt;
+    socklen_t opt_len;
     ssize_t recv_len;
     char *buff, *err_hint;
 
@@ -770,21 +772,28 @@ int main(int argc, char *argv[])
     res = setsockopt(g_sockfd, SOL_SOCKET, SO_BINDTODEVICE, g_iface,
                      strlen(g_iface));
     if (res < 0) {
-        E("ERROR: setsockopt(): %s", strerror(errno));
+        E("ERROR: setsockopt(): SO_BINDTODEVICE: %s", strerror(errno));
         goto close_socket;
     }
 
     opt = 1;
     res = setsockopt(g_sockfd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt));
     if (res < 0) {
-        E("ERROR: setsockopt(): %s", strerror(errno));
+        E("ERROR: setsockopt(): IP_HDRINCL: %s", strerror(errno));
         goto close_socket;
     }
 
     res = setsockopt(g_sockfd, SOL_SOCKET, SO_MARK, &g_fwmark,
                      sizeof(g_fwmark));
     if (res < 0) {
-        E("ERROR: setsockopt(): %s", strerror(errno));
+        E("ERROR: setsockopt(): SO_MARK: %s", strerror(errno));
+        goto close_socket;
+    }
+
+    opt = 7;
+    res = setsockopt(g_sockfd, SOL_SOCKET, SO_PRIORITY, &opt, sizeof(opt));
+    if (res < 0) {
+        E("ERROR: setsockopt(): SO_PRIORITY: %s", strerror(errno));
         goto close_socket;
     }
 
@@ -825,11 +834,34 @@ int main(int argc, char *argv[])
 
     res = nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff);
     if (res < 0) {
-        E("ERROR: nfq_set_mode()");
+        E("ERROR: nfq_set_mode(): NFQNL_COPY_PACKET: %s", strerror(errno));
+        goto destroy_queue;
+    }
+
+    res = nfq_set_queue_flags(qh, NFQA_CFG_F_FAIL_OPEN, NFQA_CFG_F_FAIL_OPEN);
+    if (res < 0) {
+        E("ERROR: nfq_set_queue_flags(): NFQA_CFG_F_FAIL_OPEN: %s",
+          strerror(errno));
         goto destroy_queue;
     }
 
     fd = nfq_fd(h);
+
+    opt_len = sizeof(opt);
+    res = getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, &opt_len);
+    if (res < 0) {
+        E("ERROR: getsockopt(): SO_RCVBUF: %s", strerror(errno));
+        goto destroy_queue;
+    }
+
+    if (opt < 1048576 /* 1 MB */) {
+        opt = 1048576;
+        res = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &opt, sizeof(opt));
+        if (res < 0) {
+            E("ERROR: setsockopt(): SO_RCVBUFFORCE: %s", strerror(errno));
+            goto destroy_queue;
+        }
+    }
 
     /*
         Iptables
@@ -839,6 +871,15 @@ int main(int argc, char *argv[])
     if (res) {
         E("ERROR: ipt_rules_setup()");
         goto cleanup_iptables;
+    }
+
+    /*
+        Process priority
+    */
+    res = setpriority(PRIO_PROCESS, getpid(), -20);
+    if (res) {
+        E("ERROR: setpriority(): %s", strerror(errno));
+        /* ignored */
     }
 
     /*
