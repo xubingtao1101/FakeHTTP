@@ -24,6 +24,7 @@ Options:
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
   -t <ttl>           TTL for generated packets
+  -w <file>          write log to <file> instead of stderr
   -x <mask>          set the mask for fwmark
 ```
 

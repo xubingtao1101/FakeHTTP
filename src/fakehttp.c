@@ -42,8 +42,10 @@
 #define VERSION "dev"
 #endif /* VERSION */
 
-#define E(...) logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
+#define E(...)     logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
+#define E_RAW(...) logger_raw(__VA_ARGS__)
 
+static FILE *g_logfp = NULL;
 static int g_sockfd = 0;
 static int g_exit = 0;
 static int g_repeat = 3;
@@ -67,6 +69,7 @@ static void print_usage(const char *name)
             "  -r <repeat>        duplicate generated packets for <repeat> "
             "times\n"
             "  -t <ttl>           TTL for generated packets\n"
+            "  -w <file>          write log to <file> instead of stderr\n"
             "  -x <mask>          set the mask for fwmark\n"
             "\n"
             "FakeHTTP version " VERSION "\n",
@@ -77,23 +80,38 @@ static void print_usage(const char *name)
 static void logger(const char *funcname, const char *filename,
                    unsigned long line, const char *fmt, ...)
 {
+    FILE *fp;
     va_list args;
     time_t t;
     char *stime;
 
+    fp = g_logfp ? g_logfp : stderr;
     t = time(NULL);
     stime = ctime(&t);
     if (stime) {
         stime[strlen(stime) - 1] = '\0';
-        fprintf(stderr, "%s ", stime);
+        fprintf(fp, "%s ", stime);
     }
 
-    fprintf(stderr, "[%s() - %s:%lu] ", funcname, filename, line);
+    fprintf(fp, "[%s() - %s:%lu] ", funcname, filename, line);
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vfprintf(fp, fmt, args);
     va_end(args);
-    fputc('\n', stderr);
-    fflush(stderr);
+    fputc('\n', fp);
+    fflush(fp);
+}
+
+
+static void logger_raw(const char *fmt, ...)
+{
+    FILE *fp;
+    va_list args;
+
+    fp = g_logfp ? g_logfp : stderr;
+    va_start(args, fmt);
+    vfprintf(fp, fmt, args);
+    va_end(args);
+    fflush(fp);
 }
 
 
@@ -160,12 +178,23 @@ static int execute_command(char **argv, int silent)
     }
 
     if (!pid) {
+        fd = -1;
+
         if (silent) {
             fd = open("/dev/null", O_WRONLY);
             if (fd < 0) {
                 E("ERROR: open(): %s", strerror(errno));
                 _exit(EXIT_FAILURE);
             }
+        } else if (g_logfp) {
+            fd = fileno(g_logfp);
+            if (fd < 0) {
+                E("ERROR: fileno(): %s", strerror(errno));
+                _exit(EXIT_FAILURE);
+            }
+        }
+
+        if (fd >= 0) {
             res = dup2(fd, STDOUT_FILENO);
             if (res < 0) {
                 E("ERROR: dup2(): %s", strerror(errno));
@@ -197,11 +226,11 @@ static int execute_command(char **argv, int silent)
 
 child_failed:
     if (!silent) {
-        fprintf(stderr, "failed command is: %s", argv[0]);
+        E_RAW("[*] failed command is: %s", argv[0]);
         for (i = 1; argv[i]; i++) {
-            fprintf(stderr, " %s", argv[i]);
+            E_RAW(" %s", argv[i]);
         }
-        fputc('\n', stderr);
+        E_RAW("\n");
     }
 
     return -1;
@@ -676,7 +705,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:w:x:")) != -1) {
         switch (opt) {
             case 'h':
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
@@ -730,6 +759,15 @@ int main(int argc, char *argv[])
                     return EXIT_FAILURE;
                 }
                 g_ttl = tmp;
+                break;
+            case 'w':
+                g_logfp = fopen(optarg, "a");
+                if (!g_logfp) {
+                    fprintf(stderr, "%s: invalid value for -w: %s\n", argv[0],
+                            strerror(errno));
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
                 break;
             case 'x':
                 tmp = strtoull(optarg, NULL, 0);
@@ -972,6 +1010,10 @@ close_socket:
 
 free_buff:
     free(buff);
+
+    if (g_logfp) {
+        fclose(g_logfp);
+    }
 
     return exitcode;
 }
