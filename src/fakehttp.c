@@ -61,7 +61,7 @@ static void print_usage(const char *name)
             "\n"
             "Options:\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
-            "  -i <interface>     either interface name (required)\n"
+            "  -i <interface>     network interface name (required)\n"
             "  -m <mark>          fwmark for bypassing the queue\n"
             "  -n <number>        netfilter queue number\n"
             "  -r <repeat>        duplicate generated packets for <repeat> "

@@ -19,7 +19,7 @@ Usage: fakehttp [options]
 
 Options:
   -h <hostname>      hostname for obfuscation (required)
-  -i <interface>     either interface name (required)
+  -i <interface>     network interface name (required)
   -m <mark>          fwmark for bypassing the queue
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
