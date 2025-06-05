@@ -44,10 +44,15 @@
 
 #define E(...)     logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
 #define E_RAW(...) logger_raw(__VA_ARGS__)
+#define E_INFO(...)     \
+    if (!g_silent) {    \
+        E(__VA_ARGS__); \
+    }
 
 static FILE *g_logfp = NULL;
 static int g_sockfd = 0;
 static int g_exit = 0;
+static int g_silent = 0;
 static int g_repeat = 3;
 static uint32_t g_fwmark = 0x8000;
 static uint32_t g_fwmask = 0;
@@ -68,6 +73,7 @@ static void print_usage(const char *name)
             "  -n <number>        netfilter queue number\n"
             "  -r <repeat>        duplicate generated packets for <repeat> "
             "times\n"
+            "  -s                 enable silent mode\n"
             "  -t <ttl>           TTL for generated packets\n"
             "  -w <file>          write log to <file> instead of stderr\n"
             "  -x <mask>          set the mask for fwmark\n"
@@ -610,25 +616,26 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     tcph = (struct tcphdr *) (pkt_data + iph_len);
     tcph_len = tcph->doff * 4;
-
-    if (!inet_ntop(AF_INET, &iph->saddr, src_ip, sizeof(src_ip))) {
-        strncpy(src_ip, "INVALID", sizeof(src_ip) - 1);
-        src_ip[sizeof(src_ip) - 1] = '\0';
-    }
-    if (!inet_ntop(AF_INET, &iph->daddr, dst_ip, sizeof(dst_ip))) {
-        strncpy(dst_ip, "INVALID", sizeof(dst_ip) - 1);
-        src_ip[sizeof(src_ip) - 1] = '\0';
-    }
-
     tcp_payload_len = pkt_len - iph_len - tcph_len;
 
+    if (!g_silent) {
+        if (!inet_ntop(AF_INET, &iph->saddr, src_ip, sizeof(src_ip))) {
+            strncpy(src_ip, "INVALID", sizeof(src_ip) - 1);
+            src_ip[sizeof(src_ip) - 1] = '\0';
+        }
+        if (!inet_ntop(AF_INET, &iph->daddr, dst_ip, sizeof(dst_ip))) {
+            strncpy(dst_ip, "INVALID", sizeof(dst_ip) - 1);
+            src_ip[sizeof(src_ip) - 1] = '\0';
+        }
+    }
+
     if (tcp_payload_len > 0) {
-        E("%s:%u ===PAYLOAD(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u ===PAYLOAD(?)===> %s:%u", src_ip, ntohs(tcph->source),
+               dst_ip, ntohs(tcph->dest));
         goto ret_mark_repeat;
     } else if (tcph->syn && tcph->ack) {
-        E("%s:%u ===SYN-ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u ===SYN-ACK===> %s:%u", src_ip, ntohs(tcph->source),
+               dst_ip, ntohs(tcph->dest));
 
         ack_new = ntohl(tcph->seq);
         ack_new++;
@@ -642,8 +649,8 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                 goto ret_accept;
             }
         }
-        E("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source),
+               dst_ip, ntohs(tcph->dest));
 
         for (i = 0; i < g_repeat; i++) {
             res = send_http(iph->daddr, iph->saddr, tcph->dest, tcph->source,
@@ -653,13 +660,13 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                 goto ret_accept;
             }
         }
-        E("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
+               dst_ip, ntohs(tcph->dest));
 
         goto ret_mark_repeat;
     } else if (tcph->ack) {
-        E("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
+               ntohs(tcph->dest));
 
         for (i = 0; i < g_repeat; i++) {
             res = send_http(iph->daddr, iph->saddr, tcph->dest, tcph->source,
@@ -669,13 +676,13 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                 goto ret_accept;
             }
         }
-        E("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
+               dst_ip, ntohs(tcph->dest));
 
         goto ret_mark_repeat;
     } else {
-        E("%s:%u ===(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-          ntohs(tcph->dest));
+        E_INFO("%s:%u ===(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
+               ntohs(tcph->dest));
         goto ret_accept;
     }
 
@@ -705,7 +712,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "h:i:m:n:r:t:w:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "h:i:m:n:r:st:w:x:")) != -1) {
         switch (opt) {
             case 'h':
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
@@ -750,6 +757,9 @@ int main(int argc, char *argv[])
                     return EXIT_FAILURE;
                 }
                 g_repeat = tmp;
+                break;
+            case 's':
+                g_silent = 1;
                 break;
             case 't':
                 if (sscanf(optarg, "%llu", &tmp) != 1 || !tmp ||

@@ -23,6 +23,7 @@ Options:
   -m <mark>          fwmark for bypassing the queue
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
+  -s                 enable silent mode
   -t <ttl>           TTL for generated packets
   -w <file>          write log to <file> instead of stderr
   -x <mask>          set the mask for fwmark
