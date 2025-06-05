@@ -52,6 +52,7 @@
 static FILE *g_logfp = NULL;
 static int g_sockfd = 0;
 static int g_exit = 0;
+static int g_daemon = 0;
 static int g_silent = 0;
 static int g_repeat = 3;
 static uint32_t g_fwmark = 0x8000;
@@ -67,6 +68,7 @@ static void print_usage(const char *name)
             "Usage: %s [options]\n"
             "\n"
             "Options:\n"
+            "  -d                 run as a daemon\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
             "  -i <interface>     network interface name (required)\n"
             "  -m <mark>          fwmark for bypassing the queue\n"
@@ -712,8 +714,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "h:i:m:n:r:st:w:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "dh:i:m:n:r:st:w:x:")) != -1) {
         switch (opt) {
+            case 'd':
+                g_daemon = 1;
+                break;
             case 'h':
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
                     fprintf(stderr, "%s: hostname is too long.\n", argv[0]);
@@ -812,6 +817,19 @@ int main(int argc, char *argv[])
         fprintf(stderr, "%s: option -i is required.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;
+    }
+
+    if (g_daemon) {
+        res = daemon(0, 0);
+        if (res < 0) {
+            fprintf(stderr, "%s: failed to daemonize: %s\n", argv[0],
+                    strerror(errno));
+            return EXIT_FAILURE;
+        }
+
+        if (!g_logfp) {
+            g_silent = 1;
+        }
     }
 
     E("FakeHTTP version " VERSION);

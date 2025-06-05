@@ -18,6 +18,7 @@ fakehttp -h www.example.com -i eth0
 Usage: fakehttp [options]
 
 Options:
+  -d                 run as a daemon
   -h <hostname>      hostname for obfuscation (required)
   -i <interface>     network interface name (required)
   -m <mark>          fwmark for bypassing the queue
