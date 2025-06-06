@@ -291,7 +291,7 @@ static int execute_command(char **argv, int silent)
 
         execvp(argv[0], argv);
 
-        E("ERROR: execvp(): %s", strerror(errno));
+        E("ERROR: execvp(): %s: %s", argv[0], strerror(errno));
 
         _exit(EXIT_FAILURE);
     }
@@ -318,25 +318,38 @@ child_failed:
 }
 
 
-static void ipt_rules_cleanup(void)
+static int ipt_rules_flush(int auto_create)
 {
-    size_t i, ipt_cmds_cnt;
-    char *ipt_cmds[][32] = {
-        {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP", NULL},
+    int res;
+    size_t i, cnt;
+    char *ipt_flush_cmd[] = {"iptables", "-w",       "-t", "mangle",
+                             "-F",       "FAKEHTTP", NULL};
+    char *ipt_create_cmds[][32] = {
+        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
 
-        {"iptables", "-w", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP",
+        {"iptables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
          NULL},
 
-        {"iptables", "-w", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP",
-         NULL},
+        {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
+         NULL}};
 
-        {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
+    res = execute_command(ipt_flush_cmd, 1);
+    if (res < 0) {
+        if (!auto_create) {
+            return -1;
+        }
 
-    ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
-
-    for (i = 0; i < ipt_cmds_cnt; i++) {
-        execute_command(ipt_cmds[i], 1);
+        cnt = sizeof(ipt_create_cmds) / sizeof(*ipt_create_cmds);
+        for (i = 0; i < cnt; i++) {
+            res = execute_command(ipt_create_cmds[i], 0);
+            if (res) {
+                E("ERROR: execute_command()");
+                return -1;
+            }
+        }
     }
+
+    return 0;
 }
 
 
@@ -346,14 +359,6 @@ static int ipt_rules_setup(void)
     size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
     int res;
     char *ipt_cmds[][32] = {
-        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
-         NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
-         NULL},
-
         /*
             exclude marked packets
         */
@@ -1042,11 +1047,16 @@ int main(int argc, char *argv[])
     /*
         Iptables
     */
-    ipt_rules_cleanup();
+    res = ipt_rules_flush(1);
+    if (res) {
+        E("ERROR: ipt_rules_flush()");
+        goto destroy_queue;
+    }
+
     res = ipt_rules_setup();
     if (res) {
         E("ERROR: ipt_rules_setup()");
-        goto cleanup_iptables;
+        goto flush_iptables;
     }
 
     /*
@@ -1064,7 +1074,7 @@ int main(int argc, char *argv[])
     res = signal_setup();
     if (res) {
         E("ERROR: signal_setup()");
-        goto cleanup_iptables;
+        goto flush_iptables;
     }
 
     E("listening on %s, netfilter queue number %" PRIu32 "...", g_iface,
@@ -1077,7 +1087,7 @@ int main(int argc, char *argv[])
     while (!g_exit) {
         if (err_cnt >= 20) {
             E("too many errors, exiting...");
-            goto cleanup_iptables;
+            goto flush_iptables;
         }
 
         recv_len = recv(fd, buff, buffsize, 0);
@@ -1094,7 +1104,7 @@ int main(int argc, char *argv[])
                 default:
                     E("ERROR: recv(): %s", strerror(errno));
                     err_cnt++;
-                    goto cleanup_iptables;
+                    goto flush_iptables;
             }
         }
 
@@ -1111,8 +1121,8 @@ int main(int argc, char *argv[])
     E("exiting normally...");
     exitcode = EXIT_SUCCESS;
 
-cleanup_iptables:
-    ipt_rules_cleanup();
+flush_iptables:
+    ipt_rules_flush(0);
 
 destroy_queue:
     nfq_destroy_queue(qh);
