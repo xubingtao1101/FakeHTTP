@@ -249,14 +249,28 @@ static int kill_running(int signal)
 }
 
 
-static int execute_command(char **argv, int silent)
+static int execute_command(char **argv, int silent, char *input)
 {
-    int res, status, fd, i;
+    int res, pipefd[2], status, fd, i;
+    size_t input_len, written;
+    ssize_t n;
     pid_t pid;
+
+    if (input) {
+        res = pipe(pipefd);
+        if (res < 0) {
+            E("ERROR: pipe(): %s", strerror(errno));
+            return -1;
+        }
+    }
 
     pid = fork();
     if (pid < 0) {
         E("ERROR: fork(): %s", strerror(errno));
+        if (input) {
+            close(pipefd[0]);
+            close(pipefd[1]);
+        }
         return -1;
     }
 
@@ -291,11 +305,34 @@ static int execute_command(char **argv, int silent)
             close(fd);
         }
 
+        if (input) {
+            close(pipefd[1]);
+            res = dup2(pipefd[0], STDIN_FILENO);
+            if (res < 0) {
+                E("ERROR: dup2(): %s", strerror(errno));
+                _exit(EXIT_FAILURE);
+            }
+            close(pipefd[0]);
+        }
+
         execvp(argv[0], argv);
 
         E("ERROR: execvp(): %s: %s", argv[0], strerror(errno));
 
         _exit(EXIT_FAILURE);
+    }
+
+    if (input) {
+        close(pipefd[0]);
+        input_len = strlen(input);
+        for (written = 0; written < input_len; written += n) {
+            n = write(pipefd[1], input + written, input_len - written);
+            if (n < 0) {
+                E("ERROR: write(): %s", strerror(errno));
+                break;
+            }
+        }
+        close(pipefd[1]);
     }
 
     if (waitpid(pid, &status, 0) < 0) {
@@ -324,36 +361,41 @@ static int nft_is_working(void)
 {
     char *nft_ver_cmd[] = {"nft", "--version", NULL};
 
-    return !execute_command(nft_ver_cmd, 1);
+    return !execute_command(nft_ver_cmd, 1, NULL);
 }
 
 
 static int nft_rules_flush(int auto_create)
 {
     int res;
-    size_t i, cnt;
-    char *nft_argv[] = {"nft", NULL, NULL};
-    char *nft_flush_cmd = "flush chain ip mangle FAKEHTTP";
-    char *nft_create_cmds[] = {"add chain ip mangle FAKEHTTP",
-                               "flush chain ip mangle FAKEHTTP",
-                               "insert rule ip mangle INPUT jump FAKEHTTP",
-                               "insert rule ip mangle FORWARD jump FAKEHTTP"};
+    char *nft_flush_cmd[] = {"nft", "flush table fakehttp", NULL};
+    char *nft_cmd[] = {"nft", "-f", "-", NULL};
+    char *nft_create_conf =
+        "table ip fakehttp {\n"
+        "    chain fh_input {\n"
+        "        type filter hook input priority mangle - 5;\n"
+        "        policy accept;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_output {\n"
+        "        type filter hook forward priority mangle - 5;\n"
+        "        policy accept;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_rules {\n"
+        "    }\n"
+        "}\n";
 
-    nft_argv[1] = nft_flush_cmd;
-    res = execute_command(nft_argv, 1);
+    res = execute_command(nft_flush_cmd, 1, NULL);
     if (res < 0) {
         if (!auto_create) {
             return -1;
         }
 
-        cnt = sizeof(nft_create_cmds) / sizeof(*nft_create_cmds);
-        for (i = 0; i < cnt; i++) {
-            nft_argv[1] = nft_create_cmds[i];
-            res = execute_command(nft_argv, 0);
-            if (res) {
-                E("ERROR: execute_command()");
-                return -1;
-            }
+        res = execute_command(nft_cmd, 0, nft_create_conf);
+        if (res) {
+            E("ERROR: execute_command()");
+            return -1;
         }
     }
 
@@ -363,96 +405,82 @@ static int nft_rules_flush(int auto_create)
 
 static int nft_rules_setup(void)
 {
-    char mark_cmd_01[256], mark_cmd_02[256], mark_cmd_03[256];
-    char queue_cmd_01[256], *fmt;
-    size_t i, nft_cmds_cnt, nft_opt_cmds_cnt;
+    size_t i, nft_opt_cmds_cnt;
     int res;
+    char *nft_cmd[] = {"nft", "-f", "-", NULL};
+    char nft_conf_buff[2048];
+    char *nft_conf_fmt =
+        "table ip fakehttp {\n"
+        "    chain fh_input {\n"
+        "        jump fh_rules;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_output {\n"
+        "        jump fh_rules;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_rules {\n"
 
-    char *nft_argv[] = {"nft", NULL, NULL};
-    char *nft_cmds[] = {
         /*
             exclude marked packets
         */
-        mark_cmd_01, mark_cmd_02, mark_cmd_03,
+        "        meta mark and %" PRIu32 " == %" PRIu32
+        " ct mark set ct mark and %" PRIu32 " xor %" PRIu32 ";\n"
+        "        ct mark and %" PRIu32 " == %" PRIu32
+        " meta mark set mark and %" PRIu32 " xor %" PRIu32 ";\n"
+        "        meta mark and %" PRIu32 " == %" PRIu32 " return;\n"
 
         /*
             exclude local IPs
         */
-        "add rule ip mangle FAKEHTTP ip saddr 0.0.0.0/8 return",
-        "add rule ip mangle FAKEHTTP ip saddr 10.0.0.0/8 return",
-        "add rule ip mangle FAKEHTTP ip saddr 100.64.0.0/10 return",
-        "add rule ip mangle FAKEHTTP ip saddr 127.0.0.0/8 return",
-        "add rule ip mangle FAKEHTTP ip saddr 169.254.0.0/16 return",
-        "add rule ip mangle FAKEHTTP ip saddr 172.16.0.0/12 return",
-        "add rule ip mangle FAKEHTTP ip saddr 192.168.0.0/16 return",
-        "add rule ip mangle FAKEHTTP ip saddr 224.0.0.0/3 return",
+        "        ip saddr 0.0.0.0/8 return;\n"
+        "        ip saddr 10.0.0.0/8 return;\n"
+        "        ip saddr 100.64.0.0/10 return;\n"
+        "        ip saddr 127.0.0.0/8 return;\n"
+        "        ip saddr 169.254.0.0/16 return;\n"
+        "        ip saddr 172.16.0.0/12 return;\n"
+        "        ip saddr 192.168.0.0/16 return;\n"
+        "        ip saddr 224.0.0.0/3 return;\n"
 
         /*
             send to nfqueue
         */
-        queue_cmd_01};
+        "        iifname \"%s\" tcp flags & (fin | rst | ack) == ack queue "
+        "num %" PRIu32 " bypass;\n"
+        "    }\n"
+        "}\n";
 
-    char *nft_opt_cmds[] = {
+    char *nft_opt_cmds[][32] = {
         /*
             exclude packets from connections with more than 32 packets
         */
-        "insert rule ip mangle FAKEHTTP ct packets > 32 return",
+        {"nft", "insert rule ip fakehttp fh_rules ct packets > 32 return",
+         NULL},
 
         /*
             exclude big packets
         */
-        "insert rule ip mangle FAKEHTTP meta length > 120 return"};
+        {"nft", "insert rule ip fakehttp fh_rules meta length > 120 return",
+         NULL}};
 
-    nft_cmds_cnt = sizeof(nft_cmds) / sizeof(*nft_cmds);
     nft_opt_cmds_cnt = sizeof(nft_opt_cmds) / sizeof(*nft_opt_cmds);
 
-    fmt = "add rule ip mangle FAKEHTTP meta mark and %" PRIu32 " == %" PRIu32
-          " ct mark set ct mark and %" PRIu32 " xor %" PRIu32;
-    res = snprintf(mark_cmd_01, sizeof(mark_cmd_01), fmt, g_fwmask, g_fwmark,
-                   ~g_fwmask, g_fwmark);
-    if (res < 0 || (size_t) res >= sizeof(mark_cmd_01)) {
+    res = snprintf(nft_conf_buff, sizeof(nft_conf_buff), nft_conf_fmt,
+                   g_fwmask, g_fwmark, ~g_fwmask, g_fwmark, g_fwmask, g_fwmark,
+                   ~g_fwmask, g_fwmark, g_fwmask, g_fwmark, g_iface, g_nfqnum);
+    if (res < 0 || (size_t) res >= sizeof(nft_conf_buff)) {
         E("ERROR: snprintf()");
         return -1;
     }
 
-    fmt = "add rule ip mangle FAKEHTTP ct mark and %" PRIu32 " == %" PRIu32
-          " meta mark set mark and %" PRIu32 " xor %" PRIu32;
-    res = snprintf(mark_cmd_02, sizeof(mark_cmd_02), fmt, g_fwmask, g_fwmark,
-                   ~g_fwmask, g_fwmark);
-    if (res < 0 || (size_t) res >= sizeof(mark_cmd_02)) {
-        E("ERROR: snprintf()");
+    res = execute_command(nft_cmd, 1, nft_conf_buff);
+    if (res) {
+        E("ERROR: execute_command()");
         return -1;
-    }
-
-
-    fmt = "add rule ip mangle FAKEHTTP meta mark and %" PRIu32 " == %" PRIu32
-          " return";
-    res = snprintf(mark_cmd_03, sizeof(mark_cmd_03), fmt, g_fwmask, g_fwmark);
-    if (res < 0 || (size_t) res >= sizeof(mark_cmd_03)) {
-        E("ERROR: snprintf()");
-        return -1;
-    }
-
-    fmt = "add rule ip mangle FAKEHTTP iifname \"%s\" tcp flags & (fin | rst "
-          "| ack) == ack queue num %" PRIu32 " bypass";
-    res = snprintf(queue_cmd_01, sizeof(queue_cmd_01), fmt, g_iface, g_nfqnum);
-    if (res < 0 || (size_t) res >= sizeof(queue_cmd_01)) {
-        E("ERROR: snprintf()");
-        return -1;
-    }
-
-    for (i = 0; i < nft_cmds_cnt; i++) {
-        nft_argv[1] = nft_cmds[i];
-        res = execute_command(nft_argv, 0);
-        if (res) {
-            E("ERROR: execute_command()");
-            return -1;
-        }
     }
 
     for (i = 0; i < nft_opt_cmds_cnt; i++) {
-        nft_argv[1] = nft_opt_cmds[i];
-        execute_command(nft_argv, 1);
+        execute_command(nft_opt_cmds[i], 1, NULL);
     }
 
     return 0;
@@ -474,7 +502,7 @@ static int ipt_rules_flush(int auto_create)
         {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
          NULL}};
 
-    res = execute_command(ipt_flush_cmd, 1);
+    res = execute_command(ipt_flush_cmd, 1, NULL);
     if (res < 0) {
         if (!auto_create) {
             return -1;
@@ -482,7 +510,7 @@ static int ipt_rules_flush(int auto_create)
 
         cnt = sizeof(ipt_create_cmds) / sizeof(*ipt_create_cmds);
         for (i = 0; i < cnt; i++) {
-            res = execute_command(ipt_create_cmds[i], 0);
+            res = execute_command(ipt_create_cmds[i], 0, NULL);
             if (res) {
                 E("ERROR: execute_command()");
                 return -1;
@@ -584,7 +612,7 @@ static int ipt_rules_setup(void)
     }
 
     for (i = 0; i < ipt_cmds_cnt; i++) {
-        res = execute_command(ipt_cmds[i], 0);
+        res = execute_command(ipt_cmds[i], 0, NULL);
         if (res) {
             E("ERROR: execute_command()");
             return -1;
@@ -592,7 +620,7 @@ static int ipt_rules_setup(void)
     }
 
     for (i = 0; i < ipt_opt_cmds_cnt; i++) {
-        execute_command(ipt_opt_cmds[i], 1);
+        execute_command(ipt_opt_cmds[i], 1, NULL);
     }
 
     return 0;
