@@ -29,6 +29,8 @@ Options:
   -t <ttl>           TTL for generated packets
   -w <file>          write log to <file> instead of stderr
   -x <mask>          set the mask for fwmark
+  -z                 use iptables commands instead of nft
+
 ```
 
 

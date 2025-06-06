@@ -56,6 +56,7 @@ static int g_exit = 0;
 static int g_daemon = 0;
 static int g_silent = 0;
 static int g_killproc = 0;
+static int g_use_iptables = 0;
 static int g_repeat = 3;
 static uint32_t g_fwmark = 0x8000;
 static uint32_t g_fwmask = 0;
@@ -82,6 +83,7 @@ static void print_usage(const char *name)
             "  -t <ttl>           TTL for generated packets\n"
             "  -w <file>          write log to <file> instead of stderr\n"
             "  -x <mask>          set the mask for fwmark\n"
+            "  -z                 use iptables commands instead of nft\n"
             "\n"
             "FakeHTTP version " VERSION "\n",
             name);
@@ -315,6 +317,145 @@ child_failed:
     }
 
     return -1;
+}
+
+
+static int nft_is_working(void)
+{
+    char *nft_ver_cmd[] = {"nft", "--version", NULL};
+
+    return !execute_command(nft_ver_cmd, 1);
+}
+
+
+static int nft_rules_flush(int auto_create)
+{
+    int res;
+    size_t i, cnt;
+    char *nft_argv[] = {"nft", NULL, NULL};
+    char *nft_flush_cmd = "flush chain ip mangle FAKEHTTP";
+    char *nft_create_cmds[] = {"add chain ip mangle FAKEHTTP",
+                               "flush chain ip mangle FAKEHTTP",
+                               "insert rule ip mangle INPUT jump FAKEHTTP",
+                               "insert rule ip mangle FORWARD jump FAKEHTTP"};
+
+    nft_argv[1] = nft_flush_cmd;
+    res = execute_command(nft_argv, 1);
+    if (res < 0) {
+        if (!auto_create) {
+            return -1;
+        }
+
+        cnt = sizeof(nft_create_cmds) / sizeof(*nft_create_cmds);
+        for (i = 0; i < cnt; i++) {
+            nft_argv[1] = nft_create_cmds[i];
+            res = execute_command(nft_argv, 0);
+            if (res) {
+                E("ERROR: execute_command()");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+static int nft_rules_setup(void)
+{
+    char mark_cmd_01[256], mark_cmd_02[256], mark_cmd_03[256];
+    char queue_cmd_01[256], *fmt;
+    size_t i, nft_cmds_cnt, nft_opt_cmds_cnt;
+    int res;
+
+    char *nft_argv[] = {"nft", NULL, NULL};
+    char *nft_cmds[] = {
+        /*
+            exclude marked packets
+        */
+        mark_cmd_01, mark_cmd_02, mark_cmd_03,
+
+        /*
+            exclude local IPs
+        */
+        "add rule ip mangle FAKEHTTP ip saddr 0.0.0.0/8 return",
+        "add rule ip mangle FAKEHTTP ip saddr 10.0.0.0/8 return",
+        "add rule ip mangle FAKEHTTP ip saddr 100.64.0.0/10 return",
+        "add rule ip mangle FAKEHTTP ip saddr 127.0.0.0/8 return",
+        "add rule ip mangle FAKEHTTP ip saddr 169.254.0.0/16 return",
+        "add rule ip mangle FAKEHTTP ip saddr 172.16.0.0/12 return",
+        "add rule ip mangle FAKEHTTP ip saddr 192.168.0.0/16 return",
+        "add rule ip mangle FAKEHTTP ip saddr 224.0.0.0/3 return",
+
+        /*
+            send to nfqueue
+        */
+        queue_cmd_01};
+
+    char *nft_opt_cmds[] = {
+        /*
+            exclude packets from connections with more than 32 packets
+        */
+        "insert rule ip mangle FAKEHTTP ct packets > 32 return",
+
+        /*
+            exclude big packets
+        */
+        "insert rule ip mangle FAKEHTTP meta length > 120 return"};
+
+    nft_cmds_cnt = sizeof(nft_cmds) / sizeof(*nft_cmds);
+    nft_opt_cmds_cnt = sizeof(nft_opt_cmds) / sizeof(*nft_opt_cmds);
+
+    fmt = "add rule ip mangle FAKEHTTP meta mark and %" PRIu32 " == %" PRIu32
+          " ct mark set ct mark and %" PRIu32 " xor %" PRIu32;
+    res = snprintf(mark_cmd_01, sizeof(mark_cmd_01), fmt, g_fwmask, g_fwmark,
+                   ~g_fwmask, g_fwmark);
+    if (res < 0 || (size_t) res >= sizeof(mark_cmd_01)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    fmt = "add rule ip mangle FAKEHTTP ct mark and %" PRIu32 " == %" PRIu32
+          " meta mark set mark and %" PRIu32 " xor %" PRIu32;
+    res = snprintf(mark_cmd_02, sizeof(mark_cmd_02), fmt, g_fwmask, g_fwmark,
+                   ~g_fwmask, g_fwmark);
+    if (res < 0 || (size_t) res >= sizeof(mark_cmd_02)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+
+    fmt = "add rule ip mangle FAKEHTTP meta mark and %" PRIu32 " == %" PRIu32
+          " return";
+    res = snprintf(mark_cmd_03, sizeof(mark_cmd_03), fmt, g_fwmask, g_fwmark);
+    if (res < 0 || (size_t) res >= sizeof(mark_cmd_03)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    fmt = "add rule ip mangle FAKEHTTP iifname \"%s\" tcp flags & (fin | rst "
+          "| ack) == ack queue num %" PRIu32 " bypass";
+    res = snprintf(queue_cmd_01, sizeof(queue_cmd_01), fmt, g_iface, g_nfqnum);
+    if (res < 0 || (size_t) res >= sizeof(queue_cmd_01)) {
+        E("ERROR: snprintf()");
+        return -1;
+    }
+
+    for (i = 0; i < nft_cmds_cnt; i++) {
+        nft_argv[1] = nft_cmds[i];
+        res = execute_command(nft_argv, 0);
+        if (res) {
+            E("ERROR: execute_command()");
+            return -1;
+        }
+    }
+
+    for (i = 0; i < nft_opt_cmds_cnt; i++) {
+        nft_argv[1] = nft_opt_cmds[i];
+        execute_command(nft_argv, 1);
+    }
+
+    return 0;
 }
 
 
@@ -792,7 +933,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "dh:i:km:n:r:st:w:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "dh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
             case 'd':
                 g_daemon = 1;
@@ -873,6 +1014,9 @@ int main(int argc, char *argv[])
                     return EXIT_FAILURE;
                 }
                 g_fwmask = tmp;
+                break;
+            case 'z':
+                g_use_iptables = 1;
                 break;
             default:
                 print_usage(argv[0]);
@@ -1045,18 +1189,40 @@ int main(int argc, char *argv[])
     }
 
     /*
-        Iptables
+        Firewall
     */
-    res = ipt_rules_flush(1);
-    if (res) {
-        E("ERROR: ipt_rules_flush()");
-        goto destroy_queue;
+    if (!g_use_iptables) {
+        if (!nft_is_working()) {
+            E("WARNING: Falling back to iptables command, as nft command is "
+              "not working.");
+            g_use_iptables = 1;
+        }
     }
 
-    res = ipt_rules_setup();
-    if (res) {
-        E("ERROR: ipt_rules_setup()");
-        goto flush_iptables;
+    if (g_use_iptables) {
+        res = ipt_rules_flush(1);
+        if (res) {
+            E("ERROR: ipt_rules_flush()");
+            goto destroy_queue;
+        }
+
+        res = ipt_rules_setup();
+        if (res) {
+            E("ERROR: ipt_rules_setup()");
+            goto flush_rules;
+        }
+    } else {
+        res = nft_rules_flush(1);
+        if (res) {
+            E("ERROR: nft_rules_flush()");
+            goto destroy_queue;
+        }
+
+        res = nft_rules_setup();
+        if (res) {
+            E("ERROR: nft_rules_setup()");
+            goto flush_rules;
+        }
     }
 
     /*
@@ -1074,7 +1240,7 @@ int main(int argc, char *argv[])
     res = signal_setup();
     if (res) {
         E("ERROR: signal_setup()");
-        goto flush_iptables;
+        goto flush_rules;
     }
 
     E("listening on %s, netfilter queue number %" PRIu32 "...", g_iface,
@@ -1087,7 +1253,7 @@ int main(int argc, char *argv[])
     while (!g_exit) {
         if (err_cnt >= 20) {
             E("too many errors, exiting...");
-            goto flush_iptables;
+            goto flush_rules;
         }
 
         recv_len = recv(fd, buff, buffsize, 0);
@@ -1104,7 +1270,7 @@ int main(int argc, char *argv[])
                 default:
                     E("ERROR: recv(): %s", strerror(errno));
                     err_cnt++;
-                    goto flush_iptables;
+                    goto flush_rules;
             }
         }
 
@@ -1121,8 +1287,12 @@ int main(int argc, char *argv[])
     E("exiting normally...");
     exitcode = EXIT_SUCCESS;
 
-flush_iptables:
-    ipt_rules_flush(0);
+flush_rules:
+    if (g_use_iptables) {
+        ipt_rules_flush(0);
+    } else {
+        nft_rules_flush(0);
+    }
 
 destroy_queue:
     nfq_destroy_queue(qh);
