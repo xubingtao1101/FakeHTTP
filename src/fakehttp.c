@@ -18,6 +18,7 @@
  */
 
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -54,6 +55,7 @@ static int g_sockfd = 0;
 static int g_exit = 0;
 static int g_daemon = 0;
 static int g_silent = 0;
+static int g_killproc = 0;
 static int g_repeat = 3;
 static uint32_t g_fwmark = 0x8000;
 static uint32_t g_fwmask = 0;
@@ -71,6 +73,7 @@ static void print_usage(const char *name)
             "  -d                 run as a daemon\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
             "  -i <interface>     network interface name (required)\n"
+            "  -k                 kill the running process\n"
             "  -m <mark>          fwmark for bypassing the queue\n"
             "  -n <number>        netfilter queue number\n"
             "  -r <repeat>        duplicate generated packets for <repeat> "
@@ -171,6 +174,76 @@ static int signal_setup(void)
     }
 
     return 0;
+}
+
+
+static int kill_running(int signal)
+{
+    int res, matched, err;
+    ssize_t len;
+    DIR *procfs;
+    struct dirent *entry;
+    pid_t pid, self_pid;
+    char self_path[PATH_MAX], proc_path[PATH_MAX], exe_path[PATH_MAX];
+
+    self_pid = getpid();
+
+    len = readlink("/proc/self/exe", self_path, sizeof(self_path));
+    if (len < 0 || (size_t) len >= sizeof(self_path)) {
+        E("ERROR: readlink(): /proc/self/exe: %s", strerror(errno));
+        return -1;
+    }
+    self_path[len] = 0;
+
+    procfs = opendir("/proc");
+    if (!procfs) {
+        E("ERROR: opendir(): /proc: %s", strerror(errno));
+        return -1;
+    }
+
+    matched = err = 0;
+    while ((entry = readdir(procfs))) {
+        pid = strtoull(entry->d_name, NULL, 0);
+        if (pid <= 1 || pid == self_pid) {
+            continue;
+        }
+
+        res = snprintf(exe_path, sizeof(exe_path), "/proc/%s/exe",
+                       entry->d_name);
+        if (res < 0 || (size_t) res >= sizeof(exe_path)) {
+            continue;
+        }
+
+        len = readlink(exe_path, proc_path, sizeof(proc_path));
+        if (len < 0 || (size_t) len >= sizeof(self_path)) {
+            continue;
+        }
+        proc_path[len] = 0;
+
+        if (strcmp(self_path, proc_path) == 0) {
+            matched = 1;
+
+            if (signal) {
+                res = kill(pid, signal);
+                if (res < 0) {
+                    E("ERROR: kill(): %llu: %s", pid, strerror(errno));
+                    err = 1;
+                }
+            }
+        }
+    }
+
+    res = closedir(procfs);
+    if (res < 0) {
+        E("ERROR: closedir(): %s", strerror(errno));
+        err = 1;
+    }
+
+    if (matched && !err) {
+        return 0;
+    }
+
+    return -1;
 }
 
 
@@ -714,7 +787,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "dh:i:m:n:r:st:w:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "dh:i:km:n:r:st:w:x:")) != -1) {
         switch (opt) {
             case 'd':
                 g_daemon = 1;
@@ -735,6 +808,9 @@ int main(int argc, char *argv[])
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
                 }
+                break;
+            case 'k':
+                g_killproc = 1;
                 break;
             case 'm':
                 tmp = strtoull(optarg, NULL, 0);
@@ -797,6 +873,11 @@ int main(int argc, char *argv[])
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
         }
+    }
+
+    if (g_killproc) {
+        res = kill_running(SIGTERM);
+        return res ? EXIT_FAILURE : EXIT_SUCCESS;
     }
 
     if (!g_fwmask) {
@@ -909,7 +990,13 @@ int main(int argc, char *argv[])
     if (!qh) {
         switch (errno) {
             case EPERM:
-                err_hint = " (Another process is running / Are you root?)";
+                res = kill_running(0);
+                errno = EPERM;
+                if (res) {
+                    err_hint = " (Another process is running / Are you root?)";
+                } else {
+                    err_hint = " (Another process is running)";
+                }
                 break;
             case EINVAL:
                 err_hint = " (Missing kernel module?)";

@@ -21,6 +21,7 @@ Options:
   -d                 run as a daemon
   -h <hostname>      hostname for obfuscation (required)
   -i <interface>     network interface name (required)
+  -k                 kill the running process
   -m <mark>          fwmark for bypassing the queue
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
