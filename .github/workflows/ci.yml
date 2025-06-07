@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install -y clang-format
       - name: Run clang-format
         run: |
-          clang-format --dry-run --Werror src/*.c
+          clang-format --dry-run --Werror src/*.c include/*.h
 
   Build:
     name: Build
@@ -130,9 +130,9 @@ jobs:
           VERSION="${{ inputs.version }}"
 
           if [ -n "$VERSION" ]; then
-              make STATIC=1 CROSS_PREFIX="$CROSS_PREFIX" VERSION="$VERSION"
+              make -j$(nproc) CFLAGS="-Werror" STATIC=1 CROSS_PREFIX="$CROSS_PREFIX" VERSION="$VERSION"
           else
-              make STATIC=1 CROSS_PREFIX="$CROSS_PREFIX"
+              make -j$(nproc) CFLAGS="-Werror" STATIC=1 CROSS_PREFIX="$CROSS_PREFIX"
           fi
       - name: Upload ${{ matrix.name }}
         uses: actions/upload-artifact@v4
