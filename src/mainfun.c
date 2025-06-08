@@ -236,6 +236,12 @@ int main(int argc, char *argv[])
     }
 
     E("FakeHTTP version " VERSION);
+    E("");
+    E("FakeHTTP is free software licensed under the GPLv3.");
+    E("Distribution without the accompanying source code is not permitted.");
+    E("");
+    E("Home page: https://github.com/MikeWang000000/FakeHTTP");
+    E("");
 
     res = fh_rawsock_setup();
     if (res < 0) {
