@@ -30,7 +30,7 @@
 int fh_nft4_flush(int auto_create)
 {
     int res;
-    char *nft_flush_cmd[] = {"nft", "flush table fakehttp", NULL};
+    char *nft_flush_cmd[] = {"nft", "flush table ip fakehttp", NULL};
     char *nft_cmd[] = {"nft", "-f", "-", NULL};
     char *nft_create_conf =
         "table ip fakehttp {\n"

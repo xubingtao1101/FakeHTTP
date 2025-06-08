@@ -20,7 +20,7 @@
 #ifndef FH_RAWSOCK_H
 #define FH_RAWSOCK_H
 
-int fh_rawsock_setup(void);
+int fh_rawsock_setup(int af);
 
 void fh_rawsock_cleanup(void);
 

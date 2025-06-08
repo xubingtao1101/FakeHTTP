@@ -24,7 +24,9 @@
 
 #include "globvar.h"
 #include "ipv4ipt.h"
+#include "ipv6ipt.h"
 #include "ipv4nft.h"
+#include "ipv6nft.h"
 #include "logging.h"
 #include "process.h"
 
@@ -53,10 +55,23 @@ int fh_nfrules_setup(void)
             return -1;
         }
 
+        res = fh_ipt6_flush(1);
+        if (res < 0) {
+            E(T(fh_ipt6_flush));
+            return -1;
+        }
+
         res = fh_ipt4_add();
         if (res < 0) {
             E(T(fh_ipt4_add));
             fh_ipt4_flush(0);
+            return -1;
+        }
+
+        res = fh_ipt6_add();
+        if (res < 0) {
+            E(T(fh_ipt6_add));
+            fh_ipt6_flush(0);
             return -1;
         }
     } else {
@@ -66,10 +81,23 @@ int fh_nfrules_setup(void)
             return -1;
         }
 
+        res = fh_nft6_flush(1);
+        if (res < 0) {
+            E(T(fh_nft6_flush));
+            return -1;
+        }
+
         res = fh_nft4_add();
         if (res < 0) {
             E(T(fh_nft4_add));
             fh_nft4_flush(0);
+            return -1;
+        }
+
+        res = fh_nft6_add();
+        if (res < 0) {
+            E(T(fh_nft6_add));
+            fh_nft6_flush(0);
             return -1;
         }
     }
@@ -82,7 +110,9 @@ void fh_nfrules_cleanup(void)
 {
     if (g_ctx.use_iptables) {
         fh_ipt4_flush(0);
+        fh_ipt6_flush(0);
     } else {
         fh_nft4_flush(0);
+        fh_nft6_flush(0);
     }
 }

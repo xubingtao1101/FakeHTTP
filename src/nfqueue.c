@@ -35,6 +35,7 @@
 
 #include "globvar.h"
 #include "ipv4pkt.h"
+#include "ipv6pkt.h"
 #include "logging.h"
 #include "process.h"
 #include "signals.h"
@@ -74,11 +75,12 @@ static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
                     uint16_t sport_be, uint16_t dport_be, uint32_t seq_be,
                     uint32_t ackseq_be)
 {
-    int pkt_len, addr_len;
+    int pkt_len, addr_len, sock_fd;
     ssize_t nbytes;
     char pkt_buff[1024];
 
     if (daddr->sa_family == AF_INET) {
+        sock_fd = g_ctx.sock4fd;
         addr_len = sizeof(struct sockaddr_in);
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
@@ -88,15 +90,21 @@ static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
             return -1;
         }
     } else if (daddr->sa_family == AF_INET6) {
+        sock_fd = g_ctx.sock6fd;
         addr_len = sizeof(struct sockaddr_in6);
-        /* TODO: NOT IMPLEMENTED */
-        return -1;
+        pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
+                               sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
+                               0);
+        if (pkt_len < 0) {
+            E(T(fh_pkt6_make));
+            return -1;
+        }
     } else {
         E("ERROR: Unknown address family: %d", (int) daddr->sa_family);
         return -1;
     }
 
-    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0, daddr, addr_len);
+    nbytes = sendto(sock_fd, pkt_buff, pkt_len, 0, daddr, addr_len);
     if (nbytes < 0) {
         E("ERROR: sendto(): %s", strerror(errno));
         return -1;
@@ -115,7 +123,7 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
                                   "Accept: */*\r\n"
                                   "\r\n";
 
-    int http_len, pkt_len, addr_len;
+    int http_len, pkt_len, addr_len, sock_fd;
     ssize_t nbytes;
     char http_buff[512], pkt_buff[1024];
 
@@ -127,6 +135,7 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
     }
 
     if (daddr->sa_family == AF_INET) {
+        sock_fd = g_ctx.sock4fd;
         addr_len = sizeof(struct sockaddr_in);
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 1,
@@ -136,15 +145,21 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
             return -1;
         }
     } else if (daddr->sa_family == AF_INET6) {
+        sock_fd = g_ctx.sock6fd;
         addr_len = sizeof(struct sockaddr_in6);
-        /* TODO: NOT IMPLEMENTED */
-        return -1;
+        pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
+                               sport_be, dport_be, seq_be, ackseq_be, 1,
+                               http_buff, http_len);
+        if (pkt_len < 0) {
+            E(T(fh_pkt6_make));
+            return -1;
+        }
     } else {
         E("ERROR: Unknown address family: %d", (int) saddr->sa_family);
         return -1;
     }
 
-    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0, daddr, addr_len);
+    nbytes = sendto(sock_fd, pkt_buff, pkt_len, 0, daddr, addr_len);
     if (nbytes < 0) {
         E("ERROR: sendto(): %s", strerror(errno));
         return -1;
@@ -196,8 +211,12 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
             goto ret_accept;
         }
     } else if (ethertype == ETHERTYPE_IPV6) {
-        /* TODO: NOT IMPLEMENTED */
-        goto ret_accept;
+        res = fh_pkt6_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
+                            &tcp_payload_len);
+        if (res < 0) {
+            EE(T(fh_pkt6_parse));
+            goto ret_accept;
+        }
     } else {
         EE("ERROR: unknown ethertype 0x%04x");
         goto ret_accept;

@@ -24,12 +24,10 @@
 #include <stdlib.h>
 #include <netinet/tcp.h>
 
-/* TODO: NOT IMPLEMENTED */
 int fh_pkt6_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
                   struct sockaddr *daddr, struct tcphdr **tcph_ptr,
                   int *tcp_payload_len);
 
-/* TODO: NOT IMPLEMENTED */
 int fh_pkt6_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
                  struct sockaddr *daddr, uint16_t sport_be, uint16_t dport_be,
                  uint32_t seq_be, uint32_t ackseq_be, int psh,

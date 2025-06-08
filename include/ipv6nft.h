@@ -20,10 +20,8 @@
 #ifndef FH_IPV6NFT_H
 #define FH_IPV6NFT_H
 
-/* TODO: NOT IMPLEMENTED */
 int fh_nft6_flush(int auto_create);
 
-/* TODO: NOT IMPLEMENTED */
 int fh_nft6_add(void);
 
 #endif /* FH_IPV6NFT_H */

@@ -29,13 +29,13 @@
 #include "globvar.h"
 #include "logging.h"
 
-int fh_rawsock_setup(void)
+int fh_rawsock_setup(int af)
 {
-    int res, opt;
+    int res, opt, sock_fd;
     const char *err_hint;
 
-    g_ctx.sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if (g_ctx.sockfd < 0) {
+    sock_fd = socket(af, SOCK_RAW, IPPROTO_RAW);
+    if (sock_fd < 0) {
         switch (errno) {
             case EPERM:
                 err_hint = " (Are you root?)";
@@ -47,21 +47,31 @@ int fh_rawsock_setup(void)
         return -1;
     }
 
-    res = setsockopt(g_ctx.sockfd, SOL_SOCKET, SO_BINDTODEVICE, g_ctx.iface,
+    res = setsockopt(sock_fd, SOL_SOCKET, SO_BINDTODEVICE, g_ctx.iface,
                      strlen(g_ctx.iface));
     if (res < 0) {
         E("ERROR: setsockopt(): SO_BINDTODEVICE: %s", strerror(errno));
         goto close_socket;
     }
 
-    opt = 1;
-    res = setsockopt(g_ctx.sockfd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt));
-    if (res < 0) {
-        E("ERROR: setsockopt(): IP_HDRINCL: %s", strerror(errno));
-        goto close_socket;
+    if (af == AF_INET6) {
+        opt = 1;
+        res = setsockopt(sock_fd, IPPROTO_IPV6, IPV6_HDRINCL, &opt,
+                         sizeof(opt));
+        if (res < 0) {
+            E("ERROR: setsockopt(): IPV6_HDRINCL: %s", strerror(errno));
+            goto close_socket;
+        }
+    } else {
+        opt = 1;
+        res = setsockopt(sock_fd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt));
+        if (res < 0) {
+            E("ERROR: setsockopt(): IP_HDRINCL: %s", strerror(errno));
+            goto close_socket;
+        }
     }
 
-    res = setsockopt(g_ctx.sockfd, SOL_SOCKET, SO_MARK, &g_ctx.fwmark,
+    res = setsockopt(sock_fd, SOL_SOCKET, SO_MARK, &g_ctx.fwmark,
                      sizeof(g_ctx.fwmark));
     if (res < 0) {
         E("ERROR: setsockopt(): SO_MARK: %s", strerror(errno));
@@ -69,17 +79,22 @@ int fh_rawsock_setup(void)
     }
 
     opt = 7;
-    res = setsockopt(g_ctx.sockfd, SOL_SOCKET, SO_PRIORITY, &opt, sizeof(opt));
+    res = setsockopt(sock_fd, SOL_SOCKET, SO_PRIORITY, &opt, sizeof(opt));
     if (res < 0) {
         E("ERROR: setsockopt(): SO_PRIORITY: %s", strerror(errno));
         goto close_socket;
     }
 
+    if (af == AF_INET6) {
+        g_ctx.sock6fd = sock_fd;
+    } else {
+        g_ctx.sock4fd = sock_fd;
+    }
+
     return 0;
 
 close_socket:
-    close(g_ctx.sockfd);
-    g_ctx.sockfd = -1;
+    close(sock_fd);
 
     return -1;
 }
@@ -87,8 +102,13 @@ close_socket:
 
 void fh_rawsock_cleanup(void)
 {
-    if (g_ctx.sockfd >= 0) {
-        close(g_ctx.sockfd);
-        g_ctx.sockfd = -1;
+    if (g_ctx.sock4fd >= 0) {
+        close(g_ctx.sock4fd);
+        g_ctx.sock4fd = -1;
+    }
+
+    if (g_ctx.sock6fd >= 0) {
+        close(g_ctx.sock6fd);
+        g_ctx.sock6fd = -1;
     }
 }
