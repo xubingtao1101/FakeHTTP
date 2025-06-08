@@ -45,6 +45,7 @@ int fh_ipt4_flush(int auto_create)
     res = fh_execute_command(ipt_flush_cmd, 1, NULL);
     if (res < 0) {
         if (!auto_create) {
+            E(T(fh_execute_command));
             return -1;
         }
 
@@ -52,7 +53,7 @@ int fh_ipt4_flush(int auto_create)
         for (i = 0; i < cnt; i++) {
             res = fh_execute_command(ipt_create_cmds[i], 0, NULL);
             if (res < 0) {
-                E("ERROR: fh_execute_command()");
+                E(T(fh_execute_command));
                 return -1;
             }
         }
@@ -135,26 +136,26 @@ int fh_ipt4_add(void)
     res = snprintf(xmark_str, sizeof(xmark_str), "%" PRIu32 "/%" PRIu32,
                    g_ctx.fwmark, g_ctx.fwmask);
     if (res < 0 || (size_t) res >= sizeof(xmark_str)) {
-        E("ERROR: snprintf()");
+        E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
 
     res = snprintf(nfqnum_str, sizeof(nfqnum_str), "%" PRIu32, g_ctx.nfqnum);
     if (res < 0 || (size_t) res >= sizeof(nfqnum_str)) {
-        E("ERROR: snprintf()");
+        E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
 
     res = snprintf(iface_str, sizeof(iface_str), "%s", g_ctx.iface);
     if (res < 0 || (size_t) res >= sizeof(iface_str)) {
-        E("ERROR: snprintf()");
+        E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
 
     for (i = 0; i < ipt_cmds_cnt; i++) {
         res = fh_execute_command(ipt_cmds[i], 0, NULL);
         if (res < 0) {
-            E("ERROR: fh_execute_command()");
+            E(T(fh_execute_command));
             return -1;
         }
     }

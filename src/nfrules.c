@@ -49,26 +49,26 @@ int fh_nfrules_setup(void)
     if (g_ctx.use_iptables) {
         res = fh_ipt4_flush(1);
         if (res < 0) {
-            E("ERROR: fh_ipt4_flush()");
+            E(T(fh_ipt4_flush));
             return -1;
         }
 
         res = fh_ipt4_add();
         if (res < 0) {
-            E("ERROR: fh_ipt4_add()");
+            E(T(fh_ipt4_add));
             fh_ipt4_flush(0);
             return -1;
         }
     } else {
         res = fh_nft4_flush(1);
         if (res < 0) {
-            E("ERROR: fh_nft4_flush()");
+            E(T(fh_nft4_flush));
             return -1;
         }
 
         res = fh_nft4_add();
         if (res < 0) {
-            E("ERROR: fh_nft4_add()");
+            E(T(fh_nft4_add));
             fh_nft4_flush(0);
             return -1;
         }

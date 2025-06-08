@@ -56,7 +56,7 @@ static int send_ack(uint32_t saddr_be, uint32_t daddr_be, uint16_t sport_be,
     pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr_be, daddr_be,
                            sport_be, dport_be, seq_be, ackseq_be, 0, NULL, 0);
     if (pkt_len < 0) {
-        E("ERROR: fh_pkt4_make()");
+        E(T(fh_pkt4_make));
         return -1;
     }
 
@@ -91,7 +91,7 @@ static int send_http(uint32_t saddr_be, uint32_t daddr_be, uint16_t sport_be,
     http_len = snprintf(http_buff, sizeof(http_buff), http_fmt,
                         g_ctx.hostname);
     if (http_len < 0 || (size_t) http_len >= sizeof(http_buff)) {
-        E("ERROR: snprintf()");
+        E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
 
@@ -99,7 +99,7 @@ static int send_http(uint32_t saddr_be, uint32_t daddr_be, uint16_t sport_be,
                            sport_be, dport_be, seq_be, ackseq_be, 1, http_buff,
                            http_len);
     if (pkt_len < 0) {
-        E("ERROR: fh_pkt4_make()");
+        E(T(fh_pkt4_make));
         return -1;
     }
 
@@ -130,7 +130,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     ph = nfq_get_msg_packet_hdr(nfa);
     if (!ph) {
-        E("ERROR: nfq_get_msg_packet_hdr()");
+        EE("ERROR: nfq_get_msg_packet_hdr(): %s", "failure");
         return -1;
     }
 
@@ -138,12 +138,12 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     pkt_data = NULL;
     pkt_len = nfq_get_payload(nfa, &pkt_data);
     if (pkt_len < 0 || !pkt_data) {
-        E("ERROR: nfq_get_payload()");
+        EE("ERROR: nfq_get_payload(): %s", "failure");
         goto ret_accept;
     }
 
     if ((size_t) pkt_len < sizeof(*iph)) {
-        E("ERROR: invalid packet length: %d", pkt_len);
+        EE("ERROR: invalid packet length: %d", pkt_len);
         goto ret_accept;
     }
 
@@ -151,17 +151,17 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     iph_len = iph->ihl * 4;
 
     if ((size_t) iph_len < sizeof(*iph)) {
-        E("ERROR: invalid IP header length: %d", iph_len);
+        EE("ERROR: invalid IP header length: %d", iph_len);
         goto ret_accept;
     }
 
     if (iph->protocol != IPPROTO_TCP) {
-        E("ERROR: not a TCP packet (protocol %d)", (int) iph->protocol);
+        EE("ERROR: not a TCP packet (protocol %d)", (int) iph->protocol);
         goto ret_accept;
     }
 
     if ((size_t) pkt_len < iph_len + sizeof(*tcph)) {
-        E("ERROR: invalid packet length: %d", pkt_len);
+        EE("ERROR: invalid packet length: %d", pkt_len);
         goto ret_accept;
     }
 
@@ -196,7 +196,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
             res = send_ack(iph->daddr, iph->saddr, tcph->dest, tcph->source,
                            tcph->ack_seq, ack_new);
             if (res < 0) {
-                E("ERROR: send_ack()");
+                EE(T(send_ack));
                 goto ret_accept;
             }
         }
@@ -207,7 +207,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
             res = send_http(iph->daddr, iph->saddr, tcph->dest, tcph->source,
                             tcph->ack_seq, ack_new);
             if (res < 0) {
-                E("ERROR: send_http()");
+                EE(T(send_http));
                 goto ret_accept;
             }
         }
@@ -223,7 +223,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
             res = send_http(iph->daddr, iph->saddr, tcph->dest, tcph->source,
                             tcph->ack_seq, tcph->seq);
             if (res < 0) {
-                E("ERROR: send_http()");
+                EE(T(send_http));
                 goto ret_accept;
             }
         }
@@ -391,7 +391,7 @@ int fh_nfq_loop(void)
         res = nfq_handle_packet(h, buff, recv_len);
         if (res < 0) {
             err_cnt++;
-            E("ERROR: nfq_handle_packet()");
+            E("ERROR: nfq_handle_packet(): %s", "failure");
             continue;
         }
 

@@ -20,6 +20,7 @@
 #define _GNU_SOURCE
 #include "ipv4pkt.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,7 @@
 #include <libnetfilter_queue/libnetfilter_queue_tcp.h>
 
 #include "globvar.h"
+#include "logging.h"
 
 int fh_pkt4_make(char *buffer, size_t buffer_size, uint32_t saddr_be,
                  uint32_t daddr_be, uint16_t sport_be, uint16_t dport_be,
@@ -42,6 +44,7 @@ int fh_pkt4_make(char *buffer, size_t buffer_size, uint32_t saddr_be,
 
     pkt_len = sizeof(*iph) + sizeof(*tcph) + tcp_payload_size;
     if (buffer_size < pkt_len + 1) {
+        E("ERROR: %s", strerror(ENOBUFS));
         return -1;
     }
 

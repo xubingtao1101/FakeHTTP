@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
     if (g_ctx.killproc) {
         res = fh_logger_setup();
         if (res < 0) {
-            E("ERROR: fh_logger_setup()");
+            EE(T(fh_logger_setup));
             return EXIT_FAILURE;
         }
         res = fh_kill_running(SIGTERM);
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
 
     res = fh_logger_setup();
     if (res < 0) {
-        E("ERROR: fh_logger_setup()");
+        EE(T(fh_logger_setup));
         return EXIT_FAILURE;
     }
 
@@ -239,31 +239,31 @@ int main(int argc, char *argv[])
 
     res = fh_rawsock_setup();
     if (res < 0) {
-        E("from fh_rawsock_setup()");
+        EE(T(fh_rawsock_setup));
         goto cleanup_logger;
     }
 
     res = fh_nfq_setup();
     if (res < 0) {
-        E("ERROR: fh_nfq_setup()");
+        EE(T(fh_nfq_setup));
         goto cleanup_rawsock;
     }
 
     res = fh_nfrules_setup();
     if (res < 0) {
-        E("ERROR: fh_nfrules_setup()");
+        EE(T(fh_nfrules_setup));
         goto cleanup_nfq;
     }
 
     res = fh_signal_setup();
     if (res < 0) {
-        E("ERROR: fh_signal_setup()");
+        EE(T(fh_signal_setup));
         goto cleanup_nfrules;
     }
 
     res = setpriority(PRIO_PROCESS, getpid(), -20);
     if (res < 0) {
-        E("WARNING: setpriority(): %s", strerror(errno));
+        EE("WARNING: setpriority(): %s", strerror(errno));
     }
 
     E("listening on %s, netfilter queue number %" PRIu32 "...", g_ctx.iface,
@@ -274,7 +274,7 @@ int main(int argc, char *argv[])
     */
     res = fh_nfq_loop();
     if (res < 0) {
-        E("ERROR: fh_nfq_loop()");
+        EE(T(fh_nfq_loop));
         goto cleanup_nfrules;
     }
 

@@ -20,7 +20,9 @@
 #ifndef FH_LOGGING_H
 #define FH_LOGGING_H
 
-#define E(...)     fh_logger(__func__, __FILE__, __LINE__, __VA_ARGS__)
+#define T(FUNC)    ("    at " #FUNC "()")
+#define E(...)     fh_logger(__func__, __FILE__, __LINE__, 0, __VA_ARGS__)
+#define EE(...)    fh_logger(__func__, __FILE__, __LINE__, 1, __VA_ARGS__)
 #define E_RAW(...) fh_logger_raw(__VA_ARGS__)
 #define E_INFO(...)      \
     if (!g_ctx.silent) { \
@@ -32,7 +34,7 @@ int fh_logger_setup(void);
 void fh_logger_cleanup(void);
 
 void fh_logger(const char *funcname, const char *filename, unsigned long line,
-               const char *fmt, ...);
+               int end, const char *fmt, ...);
 
 void fh_logger_raw(const char *fmt, ...);
 

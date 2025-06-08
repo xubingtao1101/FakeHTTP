@@ -51,12 +51,13 @@ int fh_nft4_flush(int auto_create)
     res = fh_execute_command(nft_flush_cmd, 1, NULL);
     if (res < 0) {
         if (!auto_create) {
+            E(T(fh_execute_command));
             return -1;
         }
 
         res = fh_execute_command(nft_cmd, 0, nft_create_conf);
         if (res < 0) {
-            E("ERROR: fh_execute_command()");
+            E(T(fh_execute_command));
             return -1;
         }
     }
@@ -135,13 +136,13 @@ int fh_nft4_add(void)
                    g_ctx.fwmask, g_ctx.fwmark, ~g_ctx.fwmask, g_ctx.fwmark,
                    g_ctx.fwmask, g_ctx.fwmark, g_ctx.iface, g_ctx.nfqnum);
     if (res < 0 || (size_t) res >= sizeof(nft_conf_buff)) {
-        E("ERROR: snprintf()");
+        E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
 
     res = fh_execute_command(nft_cmd, 1, nft_conf_buff);
     if (res < 0) {
-        E("ERROR: fh_execute_command()");
+        E(T(fh_execute_command));
         return -1;
     }
 

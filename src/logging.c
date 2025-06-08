@@ -56,24 +56,27 @@ void fh_logger_cleanup(void)
 
 
 void fh_logger(const char *funcname, const char *filename, unsigned long line,
-               const char *fmt, ...)
+               int end, const char *fmt, ...)
 {
     va_list args;
     time_t t;
-    char *stime;
+    char time_buff[32];
+    struct tm *tmi;
 
     t = time(NULL);
-    stime = ctime(&t);
-    if (stime) {
-        stime[strlen(stime) - 1] = '\0';
-        fprintf(g_ctx.logfp, "%s ", stime);
-    }
+    tmi = localtime(&t);
+    strftime(time_buff, sizeof(time_buff), "%Y-%m-%d %H:%M:%S", tmi);
 
-    fprintf(g_ctx.logfp, "[%s() - %s:%lu] ", funcname, filename, line);
+    fprintf(g_ctx.logfp, "%19s [%13s:%03lu] ", time_buff, filename, line);
     va_start(args, fmt);
     vfprintf(g_ctx.logfp, fmt, args);
     va_end(args);
     fputc('\n', g_ctx.logfp);
+
+    if (end) {
+        fprintf(g_ctx.logfp, "%19s [%13s:%03lu]     at %s()\n", time_buff,
+                filename, line, funcname);
+    }
     fflush(g_ctx.logfp);
 }
 
