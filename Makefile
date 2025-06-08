@@ -20,7 +20,7 @@ endif
 FAKEHTTP=$(BUILDDIR)/fakehttp
 
 ifeq ($(STATIC), 1)
-	override CFLAGS += -static
+	override LDFLAGS += -static
 endif
 
 all: $(FAKEHTTP)
