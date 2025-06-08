@@ -58,7 +58,13 @@ int fh_rawsock_setup(int af)
         opt = 1;
         res = setsockopt(sock_fd, IPPROTO_IPV6, IPV6_HDRINCL, &opt,
                          sizeof(opt));
-        if (res < 0) {
+        if (res < 0 && errno != ENOPROTOOPT) {
+            /*
+                ENOPROTOOPT may occur when kernel version < 4.5.
+                However, on Linux, IPPROTO_RAW means the kernel will not add a
+                Layer 3 header, so it is safe to ignore this error.
+                See raw(7) for details.
+            */
             E("ERROR: setsockopt(): IPV6_HDRINCL: %s", strerror(errno));
             goto close_socket;
         }
