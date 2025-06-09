@@ -27,6 +27,8 @@ struct fh_context g_ctx = {.exit = 0,
                            .sockfd = -1,
                            .logfp = NULL,
 
+                           /* -4 */ .use_ipv4 = 0,
+                           /* -6 */ .use_ipv6 = 0,
                            /* -d */ .daemon = 0,
                            /* -f */ .skipfw = 0,
                            /* -h */ .hostname = NULL,

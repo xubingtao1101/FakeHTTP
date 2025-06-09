@@ -54,28 +54,36 @@ int fh_nfrules_setup(void)
     }
 
     if (g_ctx.use_iptables) {
-        res = fh_ipt4_setup();
-        if (res < 0) {
-            E(T(fh_ipt4_setup));
-            return -1;
+        if (g_ctx.use_ipv4) {
+            res = fh_ipt4_setup();
+            if (res < 0) {
+                E(T(fh_ipt4_setup));
+                return -1;
+            }
         }
 
-        res = fh_ipt6_setup();
-        if (res < 0) {
-            E(T(fh_ipt6_setup));
-            return -1;
+        if (g_ctx.use_ipv6) {
+            res = fh_ipt6_setup();
+            if (res < 0) {
+                E(T(fh_ipt6_setup));
+                return -1;
+            }
         }
     } else {
-        res = fh_nft4_setup();
-        if (res < 0) {
-            E(T(fh_nft4_setup));
-            return -1;
+        if (g_ctx.use_ipv4) {
+            res = fh_nft4_setup();
+            if (res < 0) {
+                E(T(fh_nft4_setup));
+                return -1;
+            }
         }
 
-        res = fh_nft6_setup();
-        if (res < 0) {
-            E(T(fh_nft6_setup));
-            return -1;
+        if (g_ctx.use_ipv6) {
+            res = fh_nft6_setup();
+            if (res < 0) {
+                E(T(fh_nft6_setup));
+                return -1;
+            }
         }
     }
 
@@ -90,10 +98,20 @@ void fh_nfrules_cleanup(void)
     }
 
     if (g_ctx.use_iptables) {
-        fh_ipt4_cleanup();
-        fh_ipt6_cleanup();
+        if (g_ctx.use_ipv4) {
+            fh_ipt4_cleanup();
+        }
+
+        if (g_ctx.use_ipv6) {
+            fh_ipt6_cleanup();
+        }
     } else {
-        fh_nft4_cleanup();
-        fh_nft6_cleanup();
+        if (g_ctx.use_ipv4) {
+            fh_nft4_cleanup();
+        }
+
+        if (g_ctx.use_ipv6) {
+            fh_nft6_cleanup();
+        }
     }
 }

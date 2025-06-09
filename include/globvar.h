@@ -28,6 +28,8 @@ struct fh_context {
     int sockfd;
     FILE *logfp;
 
+    /* -4 */ int use_ipv4;
+    /* -6 */ int use_ipv6;
     /* -d */ int daemon;
     /* -f */ int skipfw;
     /* -h */ const char *hostname;

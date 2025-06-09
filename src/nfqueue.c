@@ -210,14 +210,14 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     }
 
     ethertype = ntohs(ph->hw_protocol);
-    if (ethertype == ETHERTYPE_IP) {
+    if (g_ctx.use_ipv4 && ethertype == ETHERTYPE_IP) {
         res = fh_pkt4_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
                             &tcp_payload_len);
         if (res < 0) {
             EE(T(fh_pkt4_parse));
             goto ret_accept;
         }
-    } else if (ethertype == ETHERTYPE_IPV6) {
+    } else if (g_ctx.use_ipv6 && ethertype == ETHERTYPE_IPV6) {
         res = fh_pkt6_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
                             &tcp_payload_len);
         if (res < 0) {

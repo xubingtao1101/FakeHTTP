@@ -50,6 +50,8 @@ static void print_usage(const char *name)
             "Usage: %s [options]\n"
             "\n"
             "Options:\n"
+            "  -4                 enable IPv4\n"
+            "  -6                 enable IPv6\n"
             "  -d                 run as a daemon\n"
             "  -f                 skip firewall rules\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
@@ -74,6 +76,7 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
+    char *ipproto_info;
 
     if (!argc || !argv[0]) {
         return EXIT_FAILURE;
@@ -81,8 +84,16 @@ int main(int argc, char *argv[])
 
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "dfh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "46dfh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
+            case '4':
+                g_ctx.use_ipv4 = 1;
+                break;
+
+            case '6':
+                g_ctx.use_ipv6 = 1;
+                break;
+
             case 'd':
                 g_ctx.daemon = 1;
                 break;
@@ -200,6 +211,10 @@ int main(int argc, char *argv[])
         return res < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
     }
 
+    if (!g_ctx.use_ipv4 && !g_ctx.use_ipv6) {
+        g_ctx.use_ipv4 = g_ctx.use_ipv6 = 1;
+    }
+
     if (!g_ctx.fwmask) {
         g_ctx.fwmask = g_ctx.fwmark;
     } else if ((g_ctx.fwmark & g_ctx.fwmask) != g_ctx.fwmark) {
@@ -278,8 +293,15 @@ int main(int argc, char *argv[])
         EE("WARNING: setpriority(): %s", strerror(errno));
     }
 
-    E("listening on %s, netfilter queue number %" PRIu32 "...", g_ctx.iface,
-      g_ctx.nfqnum);
+    if (g_ctx.use_ipv4 && !g_ctx.use_ipv6) {
+        ipproto_info = " (IPv4 only)";
+    } else if (!g_ctx.use_ipv4 && g_ctx.use_ipv6) {
+        ipproto_info = " (IPv6 only)";
+    } else {
+        ipproto_info = "";
+    }
+    E("listening on %s%s, netfilter queue number %" PRIu32 "...", g_ctx.iface,
+      ipproto_info, g_ctx.nfqnum);
 
     /*
         Main Loop
