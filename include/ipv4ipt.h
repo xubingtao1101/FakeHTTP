@@ -20,8 +20,8 @@
 #ifndef FH_IPV4IPT_H
 #define FH_IPV4IPT_H
 
-int fh_ipt4_flush(int auto_create);
+int fh_ipt4_setup(void);
 
-int fh_ipt4_add(void);
+void fh_ipt4_cleanup(void);
 
 #endif /* FH_IPV4IPT_H */

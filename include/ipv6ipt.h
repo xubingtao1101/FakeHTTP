@@ -20,8 +20,8 @@
 #ifndef FH_IPV6IPT_H
 #define FH_IPV6IPT_H
 
-int fh_ipt6_flush(int auto_create);
+int fh_ipt6_setup(void);
 
-int fh_ipt6_add(void);
+void fh_ipt6_cleanup(void);
 
 #endif /* FH_IPV6IPT_H */

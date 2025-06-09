@@ -51,6 +51,7 @@ static void print_usage(const char *name)
             "\n"
             "Options:\n"
             "  -d                 run as a daemon\n"
+            "  -f                 skip firewall rules\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
             "  -i <interface>     network interface name (required)\n"
             "  -k                 kill the running process\n"
@@ -80,10 +81,14 @@ int main(int argc, char *argv[])
 
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "dh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "dfh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
             case 'd':
                 g_ctx.daemon = 1;
+                break;
+
+            case 'f':
+                g_ctx.skipfw = 1;
                 break;
 
             case 'h':

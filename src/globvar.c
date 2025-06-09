@@ -29,6 +29,7 @@ struct fh_context g_ctx = {.exit = 0,
                            .logfp = NULL,
 
                            /* -d */ .daemon = 0,
+                           /* -f */ .skipfw = 0,
                            /* -h */ .hostname = NULL,
                            /* -i */ .iface = NULL,
                            /* -k */ .killproc = 0,

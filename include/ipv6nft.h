@@ -20,8 +20,8 @@
 #ifndef FH_IPV6NFT_H
 #define FH_IPV6NFT_H
 
-int fh_nft6_flush(int auto_create);
+int fh_nft6_setup(void);
 
-int fh_nft6_add(void);
+void fh_nft6_cleanup(void);
 
 #endif /* FH_IPV6NFT_H */

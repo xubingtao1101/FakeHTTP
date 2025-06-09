@@ -20,8 +20,8 @@
 #ifndef FH_IPV4NFT_H
 #define FH_IPV4NFT_H
 
-int fh_nft4_flush(int auto_create);
+int fh_nft4_setup(void);
 
-int fh_nft4_add(void);
+void fh_nft4_cleanup(void);
 
 #endif /* FH_IPV4NFT_H */

@@ -19,6 +19,7 @@ Usage: fakehttp [options]
 
 Options:
   -d                 run as a daemon
+  -f                 skip firewall rules
   -h <hostname>      hostname for obfuscation (required)
   -i <interface>     network interface name (required)
   -k                 kill the running process

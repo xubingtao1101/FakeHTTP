@@ -27,48 +27,20 @@
 #include "logging.h"
 #include "process.h"
 
-int fh_ipt6_flush(int auto_create)
+int fh_ipt6_setup(void)
 {
+    char xmark_str[64], nfqnum_str[32], iface_str[32];
+    size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
     int res;
-    size_t i, cnt;
-    char *ipt_flush_cmd[] = {"ip6tables", "-w",       "-t", "mangle",
-                             "-F",        "FAKEHTTP", NULL};
-    char *ipt_create_cmds[][32] = {
+    char *ipt_cmds[][32] = {
         {"ip6tables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
 
         {"ip6tables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
          NULL},
 
         {"ip6tables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
-         NULL}};
+         NULL},
 
-    res = fh_execute_command(ipt_flush_cmd, 1, NULL);
-    if (res < 0) {
-        if (!auto_create) {
-            E(T(fh_execute_command));
-            return -1;
-        }
-
-        cnt = sizeof(ipt_create_cmds) / sizeof(*ipt_create_cmds);
-        for (i = 0; i < cnt; i++) {
-            res = fh_execute_command(ipt_create_cmds[i], 0, NULL);
-            if (res < 0) {
-                E(T(fh_execute_command));
-                return -1;
-            }
-        }
-    }
-
-    return 0;
-}
-
-
-int fh_ipt6_add(void)
-{
-    char xmark_str[64], nfqnum_str[32], iface_str[32];
-    size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
-    int res;
-    char *ipt_cmds[][32] = {
         /*
             exclude marked packets
         */
@@ -149,6 +121,8 @@ int fh_ipt6_add(void)
         return -1;
     }
 
+    fh_ipt6_cleanup();
+
     for (i = 0; i < ipt_cmds_cnt; i++) {
         res = fh_execute_command(ipt_cmds[i], 0, NULL);
         if (res < 0) {
@@ -162,4 +136,34 @@ int fh_ipt6_add(void)
     }
 
     return 0;
+}
+
+
+void fh_ipt6_cleanup(void)
+{
+    size_t i, cnt;
+    char *ipt_cmds[][32] = {
+        {"ip6tables", "-w", "-t", "mangle", "-F", "FAKEHTTP", NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-D", "PREROUTING", "-j",
+         "FAKEHTTP", NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP",
+         NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP",
+         NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-D", "OUTPUT", "-j", "FAKEHTTP",
+         NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-D", "POSTROUTING", "-j",
+         "FAKEHTTP", NULL},
+
+        {"ip6tables", "-w", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
+
+    cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
+    for (i = 0; i < cnt; i++) {
+        fh_execute_command(ipt_cmds[i], 1, NULL);
+    }
 }

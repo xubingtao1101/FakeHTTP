@@ -27,46 +27,7 @@
 #include "logging.h"
 #include "process.h"
 
-int fh_nft4_flush(int auto_create)
-{
-    int res;
-    char *nft_flush_cmd[] = {"nft", "flush table ip fakehttp", NULL};
-    char *nft_cmd[] = {"nft", "-f", "-", NULL};
-    char *nft_create_conf =
-        "table ip fakehttp {\n"
-        "    chain fh_input {\n"
-        "        type filter hook input priority mangle - 5;\n"
-        "        policy accept;\n"
-        "    }\n"
-        "\n"
-        "    chain fh_output {\n"
-        "        type filter hook forward priority mangle - 5;\n"
-        "        policy accept;\n"
-        "    }\n"
-        "\n"
-        "    chain fh_rules {\n"
-        "    }\n"
-        "}\n";
-
-    res = fh_execute_command(nft_flush_cmd, 1, NULL);
-    if (res < 0) {
-        if (!auto_create) {
-            E(T(fh_execute_command));
-            return -1;
-        }
-
-        res = fh_execute_command(nft_cmd, 0, nft_create_conf);
-        if (res < 0) {
-            E(T(fh_execute_command));
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-
-int fh_nft4_add(void)
+int fh_nft4_setup(void)
 {
     size_t i, nft_opt_cmds_cnt;
     int res;
@@ -75,10 +36,14 @@ int fh_nft4_add(void)
     char *nft_conf_fmt =
         "table ip fakehttp {\n"
         "    chain fh_input {\n"
+        "        type filter hook input priority mangle - 5;\n"
+        "        policy accept;\n"
         "        jump fh_rules;\n"
         "    }\n"
         "\n"
-        "    chain fh_output {\n"
+        "    chain fh_forward {\n"
+        "        type filter hook forward priority mangle - 5;\n"
+        "        policy accept;\n"
         "        jump fh_rules;\n"
         "    }\n"
         "\n"
@@ -140,6 +105,8 @@ int fh_nft4_add(void)
         return -1;
     }
 
+    fh_nft4_cleanup();
+
     res = fh_execute_command(nft_cmd, 1, nft_conf_buff);
     if (res < 0) {
         E(T(fh_execute_command));
@@ -151,4 +118,12 @@ int fh_nft4_add(void)
     }
 
     return 0;
+}
+
+
+void fh_nft4_cleanup(void)
+{
+    char *nft_delete_cmd[] = {"nft", "delete table ip fakehttp", NULL};
+
+    fh_execute_command(nft_delete_cmd, 1, NULL);
 }

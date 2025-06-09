@@ -30,6 +30,7 @@ struct fh_context {
     FILE *logfp;
 
     /* -d */ int daemon;
+    /* -f */ int skipfw;
     /* -h */ const char *hostname;
     /* -i */ const char *iface;
     /* -k */ int killproc;
