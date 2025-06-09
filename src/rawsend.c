@@ -1,5 +1,5 @@
 /*
- * rawsock.c - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
+ * rawsend.c - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
  *
  * Copyright (C) 2025  MikeWang000000
  *
@@ -18,7 +18,7 @@
  */
 
 #define _GNU_SOURCE
-#include "rawsock.h"
+#include "rawsend.h"
 
 #include <errno.h>
 #include <string.h>
@@ -30,7 +30,7 @@
 #include "globvar.h"
 #include "logging.h"
 
-int fh_rawsock_setup(void)
+int fh_rawsend_setup(void)
 {
     int res, opt, sock_fd;
     const char *err_hint;
@@ -84,7 +84,7 @@ close_socket:
 }
 
 
-void fh_rawsock_cleanup(void)
+void fh_rawsend_cleanup(void)
 {
     if (g_ctx.sockfd >= 0) {
         close(g_ctx.sockfd);

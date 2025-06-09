@@ -1,5 +1,5 @@
 /*
- * rawsock.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
+ * rawsend.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
  *
  * Copyright (C) 2025  MikeWang000000
  *
@@ -17,11 +17,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef FH_RAWSOCK_H
-#define FH_RAWSOCK_H
+#ifndef FH_RAWSEND_H
+#define FH_RAWSEND_H
 
-int fh_rawsock_setup(void);
+int fh_rawsend_setup(void);
 
-void fh_rawsock_cleanup(void);
+void fh_rawsend_cleanup(void);
 
-#endif /* FH_RAWSOCK_H */
+#endif /* FH_RAWSEND_H */

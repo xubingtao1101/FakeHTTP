@@ -37,7 +37,7 @@
 #include "nfqueue.h"
 #include "nfrules.h"
 #include "process.h"
-#include "rawsock.h"
+#include "rawsend.h"
 #include "signals.h"
 
 #ifndef VERSION
@@ -264,16 +264,16 @@ int main(int argc, char *argv[])
     E("Home page: https://github.com/MikeWang000000/FakeHTTP");
     E("");
 
-    res = fh_rawsock_setup();
+    res = fh_rawsend_setup();
     if (res < 0) {
-        EE(T(fh_rawsock_setup));
+        EE(T(fh_rawsend_setup));
         goto cleanup_logger;
     }
 
     res = fh_nfq_setup();
     if (res < 0) {
         EE(T(fh_nfq_setup));
-        goto cleanup_rawsock;
+        goto cleanup_rawsend;
     }
 
     res = fh_nfrules_setup();
@@ -321,8 +321,8 @@ cleanup_nfrules:
 cleanup_nfq:
     fh_nfq_cleanup();
 
-cleanup_rawsock:
-    fh_rawsock_cleanup();
+cleanup_rawsend:
+    fh_rawsend_cleanup();
 
 cleanup_logger:
     fh_logger_cleanup();
