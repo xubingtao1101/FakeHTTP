@@ -18,6 +18,8 @@ fakehttp -h www.example.com -i eth0
 Usage: fakehttp [options]
 
 Options:
+  -4                 enable IPv4
+  -6                 enable IPv6
   -d                 run as a daemon
   -f                 skip firewall rules
   -h <hostname>      hostname for obfuscation (required)
