@@ -35,11 +35,8 @@ int fh_ipt6_setup(void)
     char *ipt_cmds[][32] = {
         {"ip6tables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
 
-        {"ip6tables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
-         NULL},
-
-        {"ip6tables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
-         NULL},
+        {"ip6tables", "-w", "-t", "mangle", "-I", "PREROUTING", "-j",
+         "FAKEHTTP", NULL},
 
         /*
             exclude marked packets

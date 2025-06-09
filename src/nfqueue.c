@@ -29,6 +29,7 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <linux/if_packet.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
@@ -71,17 +72,15 @@ invalid:
 }
 
 
-static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
-                    uint16_t sport_be, uint16_t dport_be, uint32_t seq_be,
-                    uint32_t ackseq_be)
+static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
+                    struct sockaddr *daddr, uint16_t sport_be,
+                    uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
 {
-    int pkt_len, addr_len, sock_fd;
+    int pkt_len;
     ssize_t nbytes;
     char pkt_buff[1024];
 
     if (daddr->sa_family == AF_INET) {
-        sock_fd = g_ctx.sock4fd;
-        addr_len = sizeof(struct sockaddr_in);
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
                                0);
@@ -90,8 +89,6 @@ static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
             return -1;
         }
     } else if (daddr->sa_family == AF_INET6) {
-        sock_fd = g_ctx.sock6fd;
-        addr_len = sizeof(struct sockaddr_in6);
         pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
                                0);
@@ -104,7 +101,8 @@ static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
         return -1;
     }
 
-    nbytes = sendto(sock_fd, pkt_buff, pkt_len, 0, daddr, addr_len);
+    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0,
+                    (struct sockaddr *) sll, sizeof(*sll));
     if (nbytes < 0) {
         E("ERROR: sendto(): %s", strerror(errno));
         return -1;
@@ -114,16 +112,16 @@ static int send_ack(struct sockaddr *saddr, struct sockaddr *daddr,
 }
 
 
-static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
-                     uint16_t sport_be, uint16_t dport_be, uint32_t seq_be,
-                     uint32_t ackseq_be)
+static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
+                     struct sockaddr *daddr, uint16_t sport_be,
+                     uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
 {
     static const char *http_fmt = "GET / HTTP/1.1\r\n"
                                   "Host: %s\r\n"
                                   "Accept: */*\r\n"
                                   "\r\n";
 
-    int http_len, pkt_len, addr_len, sock_fd;
+    int http_len, pkt_len;
     ssize_t nbytes;
     char http_buff[512], pkt_buff[1024];
 
@@ -135,8 +133,6 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
     }
 
     if (daddr->sa_family == AF_INET) {
-        sock_fd = g_ctx.sock4fd;
-        addr_len = sizeof(struct sockaddr_in);
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 1,
                                http_buff, http_len);
@@ -145,8 +141,6 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
             return -1;
         }
     } else if (daddr->sa_family == AF_INET6) {
-        sock_fd = g_ctx.sock6fd;
-        addr_len = sizeof(struct sockaddr_in6);
         pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
                                sport_be, dport_be, seq_be, ackseq_be, 1,
                                http_buff, http_len);
@@ -159,7 +153,8 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
         return -1;
     }
 
-    nbytes = sendto(sock_fd, pkt_buff, pkt_len, 0, daddr, addr_len);
+    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0,
+                    (struct sockaddr *) sll, sizeof(*sll));
     if (nbytes < 0) {
         E("ERROR: sendto(): %s", strerror(errno));
         return -1;
@@ -172,7 +167,7 @@ static int send_http(struct sockaddr *saddr, struct sockaddr *daddr,
 static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                     struct nfq_data *nfa, void *data)
 {
-    uint32_t pkt_id, ack_new;
+    uint32_t pkt_id, ifindex, ack_new;
     uint16_t ethertype;
     int res, i, pkt_len, tcp_payload_len;
     struct nfqnl_msg_packet_hdr *ph;
@@ -181,6 +176,8 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     char src_ip[INET6_ADDRSTRLEN], dst_ip[INET6_ADDRSTRLEN];
     struct sockaddr_storage saddr_store, daddr_store;
     struct sockaddr *saddr, *daddr;
+    struct nfqnl_msg_packet_hw *hwph;
+    struct sockaddr_ll sll;
 
     (void) nfmsg;
     (void) data;
@@ -195,7 +192,16 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     }
 
     pkt_id = ntohl(ph->packet_id);
-    ethertype = ntohs(ph->hw_protocol);
+
+    /* hwph can be null on PPP interfaces */
+    hwph = nfq_get_packet_hw(nfa);
+
+    ifindex = nfq_get_indev(nfa);
+    if (!ifindex) {
+        EE("ERROR: nfq_get_indev(): %s", "failure");
+        goto ret_accept;
+    }
+
     pkt_data = NULL;
     pkt_len = nfq_get_payload(nfa, &pkt_data);
     if (pkt_len < 0 || !pkt_data) {
@@ -203,6 +209,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         goto ret_accept;
     }
 
+    ethertype = ntohs(ph->hw_protocol);
     if (ethertype == ETHERTYPE_IP) {
         res = fh_pkt4_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
                             &tcp_payload_len);
@@ -220,6 +227,18 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     } else {
         EE("ERROR: unknown ethertype 0x%04x");
         goto ret_accept;
+    }
+
+    memset(&sll, 0, sizeof(sll));
+    sll.sll_family = AF_PACKET;
+    sll.sll_protocol = ph->hw_protocol;
+    sll.sll_ifindex = ifindex;
+    if (hwph) {
+        sll.sll_halen = sizeof(hwph->hw_addr);
+        memcpy(sll.sll_addr, hwph->hw_addr, sizeof(hwph->hw_addr));
+    } else {
+        sll.sll_halen = 0;
+        memset(sll.sll_addr, 0, sizeof(sll.sll_addr));
     }
 
     if (!g_ctx.silent) {
@@ -240,7 +259,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         ack_new = htonl(ack_new);
 
         for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_ack(daddr, saddr, tcph->dest, tcph->source,
+            res = send_ack(&sll, daddr, saddr, tcph->dest, tcph->source,
                            tcph->ack_seq, ack_new);
             if (res < 0) {
                 EE(T(send_ack));
@@ -251,7 +270,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                dst_ip, ntohs(tcph->dest));
 
         for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(daddr, saddr, tcph->dest, tcph->source,
+            res = send_http(&sll, daddr, saddr, tcph->dest, tcph->source,
                             tcph->ack_seq, ack_new);
             if (res < 0) {
                 EE(T(send_http));
@@ -267,7 +286,7 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                ntohs(tcph->dest));
 
         for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(daddr, saddr, tcph->dest, tcph->source,
+            res = send_http(&sll, daddr, saddr, tcph->dest, tcph->source,
                             tcph->ack_seq, tcph->seq);
             if (res < 0) {
                 EE(T(send_http));

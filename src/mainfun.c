@@ -249,13 +249,7 @@ int main(int argc, char *argv[])
     E("Home page: https://github.com/MikeWang000000/FakeHTTP");
     E("");
 
-    res = fh_rawsock_setup(AF_INET);
-    if (res < 0) {
-        EE(T(fh_rawsock_setup));
-        goto cleanup_logger;
-    }
-
-    res = fh_rawsock_setup(AF_INET6);
+    res = fh_rawsock_setup();
     if (res < 0) {
         EE(T(fh_rawsock_setup));
         goto cleanup_logger;

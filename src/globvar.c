@@ -24,8 +24,7 @@
 #include <stdio.h>
 
 struct fh_context g_ctx = {.exit = 0,
-                           .sock4fd = -1,
-                           .sock6fd = -1,
+                           .sockfd = -1,
                            .logfp = NULL,
 
                            /* -d */ .daemon = 0,

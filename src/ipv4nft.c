@@ -35,14 +35,8 @@ int fh_nft4_setup(void)
     char nft_conf_buff[2048];
     char *nft_conf_fmt =
         "table ip fakehttp {\n"
-        "    chain fh_input {\n"
-        "        type filter hook input priority mangle - 5;\n"
-        "        policy accept;\n"
-        "        jump fh_rules;\n"
-        "    }\n"
-        "\n"
-        "    chain fh_forward {\n"
-        "        type filter hook forward priority mangle - 5;\n"
+        "    chain fh_prerouting {\n"
+        "        type filter hook prerouting priority mangle - 5;\n"
         "        policy accept;\n"
         "        jump fh_rules;\n"
         "    }\n"

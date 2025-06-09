@@ -25,8 +25,7 @@
 
 struct fh_context {
     int exit;
-    int sock4fd;
-    int sock6fd;
+    int sockfd;
     FILE *logfp;
 
     /* -d */ int daemon;

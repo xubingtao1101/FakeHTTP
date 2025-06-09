@@ -24,17 +24,18 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <net/ethernet.h>
 #include <sys/socket.h>
 
 #include "globvar.h"
 #include "logging.h"
 
-int fh_rawsock_setup(int af)
+int fh_rawsock_setup(void)
 {
     int res, opt, sock_fd;
     const char *err_hint;
 
-    sock_fd = socket(af, SOCK_RAW, IPPROTO_RAW);
+    sock_fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
     if (sock_fd < 0) {
         switch (errno) {
             case EPERM:
@@ -45,36 +46,6 @@ int fh_rawsock_setup(int af)
         }
         E("ERROR: socket(): %s%s", strerror(errno), err_hint);
         return -1;
-    }
-
-    res = setsockopt(sock_fd, SOL_SOCKET, SO_BINDTODEVICE, g_ctx.iface,
-                     strlen(g_ctx.iface));
-    if (res < 0) {
-        E("ERROR: setsockopt(): SO_BINDTODEVICE: %s", strerror(errno));
-        goto close_socket;
-    }
-
-    if (af == AF_INET6) {
-        opt = 1;
-        res = setsockopt(sock_fd, IPPROTO_IPV6, IPV6_HDRINCL, &opt,
-                         sizeof(opt));
-        if (res < 0 && errno != ENOPROTOOPT) {
-            /*
-                ENOPROTOOPT may occur when kernel version < 4.5.
-                However, on Linux, IPPROTO_RAW means the kernel will not add a
-                Layer 3 header, so it is safe to ignore this error.
-                See raw(7) for details.
-            */
-            E("ERROR: setsockopt(): IPV6_HDRINCL: %s", strerror(errno));
-            goto close_socket;
-        }
-    } else {
-        opt = 1;
-        res = setsockopt(sock_fd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt));
-        if (res < 0) {
-            E("ERROR: setsockopt(): IP_HDRINCL: %s", strerror(errno));
-            goto close_socket;
-        }
     }
 
     res = setsockopt(sock_fd, SOL_SOCKET, SO_MARK, &g_ctx.fwmark,
@@ -91,11 +62,18 @@ int fh_rawsock_setup(int af)
         goto close_socket;
     }
 
-    if (af == AF_INET6) {
-        g_ctx.sock6fd = sock_fd;
-    } else {
-        g_ctx.sock4fd = sock_fd;
+    /*
+        Set SO_RCVBUF to the minimum, since we never call recvfrom() on this
+        socket.
+    */
+    opt = 128;
+    res = setsockopt(sock_fd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt));
+    if (res < 0) {
+        E("ERROR: setsockopt(): SO_PRIORITY: %s", strerror(errno));
+        goto close_socket;
     }
+
+    g_ctx.sockfd = sock_fd;
 
     return 0;
 
@@ -108,13 +86,8 @@ close_socket:
 
 void fh_rawsock_cleanup(void)
 {
-    if (g_ctx.sock4fd >= 0) {
-        close(g_ctx.sock4fd);
-        g_ctx.sock4fd = -1;
-    }
-
-    if (g_ctx.sock6fd >= 0) {
-        close(g_ctx.sock6fd);
-        g_ctx.sock6fd = -1;
+    if (g_ctx.sockfd >= 0) {
+        close(g_ctx.sockfd);
+        g_ctx.sockfd = -1;
     }
 }

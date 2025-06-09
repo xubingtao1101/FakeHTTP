@@ -35,11 +35,8 @@ int fh_ipt4_setup(void)
     char *ipt_cmds[][32] = {
         {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
 
-        {"iptables", "-w", "-t", "mangle", "-I", "INPUT", "-j", "FAKEHTTP",
-         NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-I", "FORWARD", "-j", "FAKEHTTP",
-         NULL},
+        {"iptables", "-w", "-t", "mangle", "-I", "PREROUTING", "-j",
+         "FAKEHTTP", NULL},
 
         /*
             exclude marked packets
