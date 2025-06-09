@@ -35,155 +35,26 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 #include "globvar.h"
-#include "ipv4pkt.h"
-#include "ipv6pkt.h"
 #include "logging.h"
-#include "process.h"
+#include "rawsend.h"
 #include "signals.h"
 
 static int fd = -1;
 static struct nfq_handle *h = NULL;
 static struct nfq_q_handle *qh = NULL;
 
-static void ipaddr_to_str(struct sockaddr *addr, char ipstr[INET6_ADDRSTRLEN])
-{
-    static const char invalid[] = "INVALID";
-
-    const char *res;
-
-    if (addr->sa_family == AF_INET) {
-        res = inet_ntop(AF_INET, &((struct sockaddr_in *) addr)->sin_addr,
-                        ipstr, INET6_ADDRSTRLEN);
-        if (!res) {
-            goto invalid;
-        }
-        return;
-    } else if (addr->sa_family == AF_INET6) {
-        res = inet_ntop(AF_INET6, &((struct sockaddr_in6 *) addr)->sin6_addr,
-                        ipstr, INET6_ADDRSTRLEN);
-        if (!res) {
-            goto invalid;
-        }
-        return;
-    }
-
-invalid:
-    memcpy(ipstr, invalid, sizeof(invalid));
-}
-
-
-static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
-                    struct sockaddr *daddr, uint16_t sport_be,
-                    uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
-{
-    int pkt_len;
-    ssize_t nbytes;
-    char pkt_buff[1024];
-
-    if (daddr->sa_family == AF_INET) {
-        pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
-                               sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
-                               0);
-        if (pkt_len < 0) {
-            E(T(fh_pkt4_make));
-            return -1;
-        }
-    } else if (daddr->sa_family == AF_INET6) {
-        pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
-                               sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
-                               0);
-        if (pkt_len < 0) {
-            E(T(fh_pkt6_make));
-            return -1;
-        }
-    } else {
-        E("ERROR: Unknown address family: %d", (int) daddr->sa_family);
-        return -1;
-    }
-
-    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0,
-                    (struct sockaddr *) sll, sizeof(*sll));
-    if (nbytes < 0) {
-        E("ERROR: sendto(): %s", strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-
-static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
-                     struct sockaddr *daddr, uint16_t sport_be,
-                     uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
-{
-    static const char *http_fmt = "GET / HTTP/1.1\r\n"
-                                  "Host: %s\r\n"
-                                  "Accept: */*\r\n"
-                                  "\r\n";
-
-    int http_len, pkt_len;
-    ssize_t nbytes;
-    char http_buff[512], pkt_buff[1024];
-
-    http_len = snprintf(http_buff, sizeof(http_buff), http_fmt,
-                        g_ctx.hostname);
-    if (http_len < 0 || (size_t) http_len >= sizeof(http_buff)) {
-        E("ERROR: snprintf(): %s", "failure");
-        return -1;
-    }
-
-    if (daddr->sa_family == AF_INET) {
-        pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
-                               sport_be, dport_be, seq_be, ackseq_be, 1,
-                               http_buff, http_len);
-        if (pkt_len < 0) {
-            E(T(fh_pkt4_make));
-            return -1;
-        }
-    } else if (daddr->sa_family == AF_INET6) {
-        pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr,
-                               sport_be, dport_be, seq_be, ackseq_be, 1,
-                               http_buff, http_len);
-        if (pkt_len < 0) {
-            E(T(fh_pkt6_make));
-            return -1;
-        }
-    } else {
-        E("ERROR: Unknown address family: %d", (int) saddr->sa_family);
-        return -1;
-    }
-
-    nbytes = sendto(g_ctx.sockfd, pkt_buff, pkt_len, 0,
-                    (struct sockaddr *) sll, sizeof(*sll));
-    if (nbytes < 0) {
-        E("ERROR: sendto(): %s", strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-
 static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                     struct nfq_data *nfa, void *data)
 {
-    uint32_t pkt_id, ifindex, ack_new;
-    uint16_t ethertype;
-    int res, i, pkt_len, tcp_payload_len;
+    uint32_t pkt_id, ifindex;
+    int res, pkt_len;
     struct nfqnl_msg_packet_hdr *ph;
-    struct tcphdr *tcph;
     unsigned char *pkt_data;
-    char src_ip[INET6_ADDRSTRLEN], dst_ip[INET6_ADDRSTRLEN];
-    struct sockaddr_storage saddr_store, daddr_store;
-    struct sockaddr *saddr, *daddr;
     struct nfqnl_msg_packet_hw *hwph;
     struct sockaddr_ll sll;
 
     (void) nfmsg;
     (void) data;
-
-    saddr = (struct sockaddr *) &saddr_store;
-    daddr = (struct sockaddr *) &daddr_store;
 
     ph = nfq_get_msg_packet_hdr(nfa);
     if (!ph) {
@@ -192,9 +63,6 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     }
 
     pkt_id = ntohl(ph->packet_id);
-
-    /* hwph can be null on PPP interfaces */
-    hwph = nfq_get_packet_hw(nfa);
 
     ifindex = nfq_get_indev(nfa);
     if (!ifindex) {
@@ -209,30 +77,13 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         goto ret_accept;
     }
 
-    ethertype = ntohs(ph->hw_protocol);
-    if (g_ctx.use_ipv4 && ethertype == ETHERTYPE_IP) {
-        res = fh_pkt4_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
-                            &tcp_payload_len);
-        if (res < 0) {
-            EE(T(fh_pkt4_parse));
-            goto ret_accept;
-        }
-    } else if (g_ctx.use_ipv6 && ethertype == ETHERTYPE_IPV6) {
-        res = fh_pkt6_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
-                            &tcp_payload_len);
-        if (res < 0) {
-            EE(T(fh_pkt6_parse));
-            goto ret_accept;
-        }
-    } else {
-        EE("ERROR: unknown ethertype 0x%04x");
-        goto ret_accept;
-    }
-
     memset(&sll, 0, sizeof(sll));
     sll.sll_family = AF_PACKET;
     sll.sll_protocol = ph->hw_protocol;
     sll.sll_ifindex = ifindex;
+
+    /* hwph can be null on PPP interfaces */
+    hwph = nfq_get_packet_hw(nfa);
     if (hwph) {
         sll.sll_halen = sizeof(hwph->hw_addr);
         memcpy(sll.sll_addr, hwph->hw_addr, sizeof(hwph->hw_addr));
@@ -241,73 +92,17 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         memset(sll.sll_addr, 0, sizeof(sll.sll_addr));
     }
 
-    if (!g_ctx.silent) {
-        ipaddr_to_str(saddr, src_ip);
-        ipaddr_to_str(daddr, dst_ip);
-    }
-
-    if (tcp_payload_len > 0) {
-        E_INFO("%s:%u ===PAYLOAD(?)===> %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-        goto ret_mark_repeat;
-    } else if (tcph->syn && tcph->ack) {
-        E_INFO("%s:%u ===SYN-ACK===> %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-
-        ack_new = ntohl(tcph->seq);
-        ack_new++;
-        ack_new = htonl(ack_new);
-
-        for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_ack(&sll, daddr, saddr, tcph->dest, tcph->source,
-                           tcph->ack_seq, ack_new);
-            if (res < 0) {
-                EE(T(send_ack));
-                goto ret_accept;
-            }
-        }
-        E_INFO("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-
-        for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(&sll, daddr, saddr, tcph->dest, tcph->source,
-                            tcph->ack_seq, ack_new);
-            if (res < 0) {
-                EE(T(send_http));
-                goto ret_accept;
-            }
-        }
-        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-
-        goto ret_mark_repeat;
-    } else if (tcph->ack) {
-        E_INFO("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-               ntohs(tcph->dest));
-
-        for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(&sll, daddr, saddr, tcph->dest, tcph->source,
-                            tcph->ack_seq, tcph->seq);
-            if (res < 0) {
-                EE(T(send_http));
-                goto ret_accept;
-            }
-        }
-        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-
-        goto ret_mark_repeat;
-    } else {
-        E_INFO("%s:%u ===(?)===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
-               ntohs(tcph->dest));
+    res = fh_rawsend_handle(&sll, pkt_data, pkt_len);
+    if (res < 0) {
+        EE(T(fh_rawsend_handle));
+        goto ret_accept;
+    } else if (res) {
         goto ret_accept;
     }
+    return nfq_set_verdict2(qh, pkt_id, NF_REPEAT, g_ctx.fwmark, 0, NULL);
 
 ret_accept:
     return nfq_set_verdict(qh, pkt_id, NF_ACCEPT, 0, NULL);
-
-ret_mark_repeat:
-    return nfq_set_verdict2(qh, pkt_id, NF_REPEAT, g_ctx.fwmark, 0, NULL);
 }
 
 

@@ -20,8 +20,13 @@
 #ifndef FH_RAWSEND_H
 #define FH_RAWSEND_H
 
+#include <stdint.h>
+#include <linux/if_packet.h>
+
 int fh_rawsend_setup(void);
 
 void fh_rawsend_cleanup(void);
+
+int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len);
 
 #endif /* FH_RAWSEND_H */

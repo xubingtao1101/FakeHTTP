@@ -25,7 +25,6 @@
 
 struct fh_context {
     int exit;
-    int sockfd;
     FILE *logfp;
 
     /* -4 */ int use_ipv4;
