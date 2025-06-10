@@ -168,7 +168,7 @@ static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
 
 int fh_rawsend_setup(void)
 {
-    int res, opt, sockfd;
+    int res, opt;
     const char *err_hint;
 
     sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
