@@ -25,8 +25,8 @@
 #include <netinet/tcp.h>
 
 int fh_pkt6_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
-                  struct sockaddr *daddr, struct tcphdr **tcph_ptr,
-                  int *tcp_payload_len);
+                  struct sockaddr *daddr, uint8_t *ttl,
+                  struct tcphdr **tcph_ptr, int *tcp_payload_len);
 
 int fh_pkt6_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
                  struct sockaddr *daddr, uint16_t sport_be, uint16_t dport_be,

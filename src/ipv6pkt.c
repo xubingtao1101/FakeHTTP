@@ -34,8 +34,8 @@
 #include "logging.h"
 
 int fh_pkt6_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
-                  struct sockaddr *daddr, struct tcphdr **tcph_ptr,
-                  int *tcp_payload_len)
+                  struct sockaddr *daddr, uint8_t *ttl,
+                  struct tcphdr **tcph_ptr, int *tcp_payload_len)
 {
     struct ip6_hdr *ip6h;
     struct tcphdr *tcph;
@@ -79,6 +79,7 @@ int fh_pkt6_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
     daddr_in6->sin6_family = AF_INET6;
     memcpy(&daddr_in6->sin6_addr, &ip6h->ip6_dst, sizeof(struct in6_addr));
 
+    *ttl = ip6h->ip6_hlim;
     *tcph_ptr = tcph;
     *tcp_payload_len = pkt_len - ip6h_len - tcph_len;
 

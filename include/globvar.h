@@ -31,6 +31,7 @@ struct fh_context {
     /* -6 */ int use_ipv6;
     /* -d */ int daemon;
     /* -f */ int skipfw;
+    /* -g */ int nohopest;
     /* -h */ const char *hostname;
     /* -i */ const char *iface;
     /* -k */ int killproc;

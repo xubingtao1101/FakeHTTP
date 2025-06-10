@@ -34,8 +34,8 @@
 #include "logging.h"
 
 int fh_pkt4_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
-                  struct sockaddr *daddr, struct tcphdr **tcph_ptr,
-                  int *tcp_payload_len)
+                  struct sockaddr *daddr, uint8_t *ttl,
+                  struct tcphdr **tcph_ptr, int *tcp_payload_len)
 {
     struct iphdr *iph;
     struct tcphdr *tcph;
@@ -83,6 +83,7 @@ int fh_pkt4_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
     daddr_in->sin_family = AF_INET;
     daddr_in->sin_addr.s_addr = iph->daddr;
 
+    *ttl = iph->ttl;
     *tcph_ptr = tcph;
     *tcp_payload_len = pkt_len - iph_len - tcph_len;
 

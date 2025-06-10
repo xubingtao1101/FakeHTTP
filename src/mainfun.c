@@ -54,6 +54,7 @@ static void print_usage(const char *name)
             "  -6                 enable IPv6\n"
             "  -d                 run as a daemon\n"
             "  -f                 skip firewall rules\n"
+            "  -g                 disable hop count estimation\n"
             "  -h <hostname>      hostname for obfuscation (required)\n"
             "  -i <interface>     network interface name (required)\n"
             "  -k                 kill the running process\n"

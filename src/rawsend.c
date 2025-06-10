@@ -36,6 +36,17 @@
 
 static int sockfd = -1;
 
+static int hop_estimate(uint8_t ttl)
+{
+    if (ttl <= 64) {
+        return 64 - ttl;
+    } else if (ttl <= 128) {
+        return 128 - ttl;
+    } else {
+        return 255 - ttl;
+    }
+}
+
 static void ipaddr_to_str(struct sockaddr *addr, char ipstr[INET6_ADDRSTRLEN])
 {
     static const char invalid[] = "INVALID";
@@ -220,7 +231,8 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
 {
     uint32_t ack_new;
     uint16_t ethertype;
-    int res, i, tcp_payload_len;
+    int res, i, tcp_payload_len, hop;
+    uint8_t src_ttl;
     struct tcphdr *tcph;
     char src_ip[INET6_ADDRSTRLEN], dst_ip[INET6_ADDRSTRLEN];
     struct sockaddr_storage saddr_store, daddr_store;
@@ -231,14 +243,14 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
 
     ethertype = ntohs(sll->sll_protocol);
     if (g_ctx.use_ipv4 && ethertype == ETHERTYPE_IP) {
-        res = fh_pkt4_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
+        res = fh_pkt4_parse(pkt_data, pkt_len, saddr, daddr, &src_ttl, &tcph,
                             &tcp_payload_len);
         if (res < 0) {
             E(T(fh_pkt4_parse));
             return -1;
         }
     } else if (g_ctx.use_ipv6 && ethertype == ETHERTYPE_IPV6) {
-        res = fh_pkt6_parse(pkt_data, pkt_len, saddr, daddr, &tcph,
+        res = fh_pkt6_parse(pkt_data, pkt_len, saddr, daddr, &src_ttl, &tcph,
                             &tcp_payload_len);
         if (res < 0) {
             E(T(fh_pkt6_parse));
@@ -252,6 +264,15 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
     if (!g_ctx.silent) {
         ipaddr_to_str(saddr, src_ip);
         ipaddr_to_str(daddr, dst_ip);
+    }
+
+    if (!g_ctx.nohopest) {
+        hop = hop_estimate(src_ttl);
+        if (hop <= g_ctx.ttl) {
+            E_INFO("%s:%u ===LOCAL(?)===> %s:%u", src_ip, ntohs(tcph->source),
+                   dst_ip, ntohs(tcph->dest));
+            return 0;
+        }
     }
 
     if (tcp_payload_len > 0) {
