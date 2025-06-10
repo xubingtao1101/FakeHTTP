@@ -100,7 +100,7 @@ int fh_nft6_setup(void)
 
     fh_nft6_cleanup();
 
-    res = fh_execute_command(nft_cmd, 1, nft_conf_buff);
+    res = fh_execute_command(nft_cmd, 0, nft_conf_buff);
     if (res < 0) {
         E(T(fh_execute_command));
         return -1;
