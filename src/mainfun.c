@@ -52,6 +52,7 @@ static void print_usage(const char *name)
             "Options:\n"
             "  -4                 enable IPv4\n"
             "  -6                 enable IPv6\n"
+            "  -b                 use custom tcp payload from binary file\n"
             "  -d                 run as a daemon\n"
             "  -f                 skip firewall rules\n"
             "  -g                 disable hop count estimation\n"
@@ -85,7 +86,7 @@ int main(int argc, char *argv[])
 
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "46dfh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "46b:dfh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
             case '4':
                 g_ctx.use_ipv4 = 1;
@@ -93,6 +94,16 @@ int main(int argc, char *argv[])
 
             case '6':
                 g_ctx.use_ipv6 = 1;
+                break;
+
+            case 'b':
+                g_ctx.payloadpath = optarg;
+                if (strlen(g_ctx.payloadpath) > PATH_MAX - 1) {
+                    fprintf(stderr, "%s: path of payload file is too long.\n",
+                            argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
                 break;
 
             case 'd':

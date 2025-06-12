@@ -29,6 +29,7 @@ struct fh_context {
 
     /* -4 */ int use_ipv4;
     /* -6 */ int use_ipv6;
+    /* -b */ const char *payloadpath;
     /* -d */ int daemon;
     /* -f */ int skipfw;
     /* -g */ int nohopest;

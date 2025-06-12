@@ -20,6 +20,7 @@ Usage: fakehttp [options]
 Options:
   -4                 enable IPv4
   -6                 enable IPv6
+  -b <file>          use custom tcp payload from binary file
   -d                 run as a daemon
   -f                 skip firewall rules
   -h <hostname>      hostname for obfuscation (required)
