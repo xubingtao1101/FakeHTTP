@@ -26,6 +26,8 @@
 struct fh_context g_ctx = {.exit = 0,
                            .logfp = NULL,
 
+                           /* -0 */ .inbound = 0,
+                           /* -1 */ .outbound = 0,
                            /* -4 */ .use_ipv4 = 0,
                            /* -6 */ .use_ipv6 = 0,
                            /* -b */ .payloadpath = NULL,

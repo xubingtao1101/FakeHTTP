@@ -344,6 +344,12 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
                dst_ip, ntohs(tcph->dest));
         return 0;
     } else if (tcph->syn && tcph->ack) {
+        if (!g_ctx.outbound) {
+            E_INFO("%s:%u ===SYN-ACK(?)===> %s:%u", src_ip,
+                   ntohs(tcph->source), dst_ip, ntohs(tcph->dest));
+            return 0;
+        }
+
         E_INFO("%s:%u ===SYN-ACK===> %s:%u", src_ip, ntohs(tcph->source),
                dst_ip, ntohs(tcph->dest));
 
@@ -375,6 +381,12 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
 
         return 0;
     } else if (tcph->ack) {
+        if (!g_ctx.inbound) {
+            E_INFO("%s:%u ===ACK(?)===> %s:%u", src_ip, ntohs(tcph->source),
+                   dst_ip, ntohs(tcph->dest));
+            return 0;
+        }
+
         E_INFO("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
                ntohs(tcph->dest));
 

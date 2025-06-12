@@ -58,6 +58,8 @@ static void print_usage(const char *name)
         "  -i <interface>     work on specified network interface\n"
         "\n"
         "General Options:\n"
+        "  -0                 process inbound connections\n"
+        "  -1                 process outbound connections\n"
         "  -4                 process IPv4 connections\n"
         "  -6                 process IPv6 connections\n"
         "  -d                 run as a daemon\n"
@@ -86,7 +88,7 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
-    char *ipproto_info;
+    char *direction_info, *ipproto_info;
 
     if (!argc || !argv[0]) {
         print_usage(PROGNAME);
@@ -98,8 +100,16 @@ int main(int argc, char *argv[])
 
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "46b:dfh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "0146b:dfh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
+            case '0':
+                g_ctx.inbound = 1;
+                break;
+
+            case '1':
+                g_ctx.outbound = 1;
+                break;
+
             case '4':
                 g_ctx.use_ipv4 = 1;
                 break;
@@ -235,6 +245,10 @@ int main(int argc, char *argv[])
         return res < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
     }
 
+    if (!g_ctx.inbound && !g_ctx.outbound) {
+        g_ctx.inbound = g_ctx.outbound = 1;
+    }
+
     if (!g_ctx.use_ipv4 && !g_ctx.use_ipv6) {
         g_ctx.use_ipv4 = g_ctx.use_ipv6 = 1;
     }
@@ -324,8 +338,17 @@ int main(int argc, char *argv[])
     } else {
         ipproto_info = "";
     }
-    E("listening on %s%s, netfilter queue number %" PRIu32 "...", g_ctx.iface,
-      ipproto_info, g_ctx.nfqnum);
+
+    if (g_ctx.inbound && !g_ctx.outbound) {
+        direction_info = " (inbound only)";
+    } else if (!g_ctx.inbound && g_ctx.outbound) {
+        direction_info = " (outbound only)";
+    } else {
+        direction_info = "";
+    }
+
+    E("listening on %s%s%s, netfilter queue number %" PRIu32 "...",
+      g_ctx.iface, ipproto_info, direction_info, g_ctx.nfqnum);
 
     /*
         Main Loop

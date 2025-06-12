@@ -26,7 +26,8 @@
 struct fh_context {
     int exit;
     FILE *logfp;
-
+    /* -0 */ int inbound;
+    /* -1 */ int outbound;
     /* -4 */ int use_ipv4;
     /* -6 */ int use_ipv6;
     /* -b */ const char *payloadpath;

@@ -22,6 +22,8 @@ Basic Options:
   -i <interface>     work on specified network interface
 
 General Options:
+  -0                 process inbound connections
+  -1                 process outbound connections
   -4                 process IPv4 connections
   -6                 process IPv6 connections
   -d                 run as a daemon
