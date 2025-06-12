@@ -17,21 +17,26 @@ fakehttp -h www.example.com -i eth0
 ```
 Usage: fakehttp [options]
 
-Options:
-  -4                 enable IPv4
-  -6                 enable IPv6
-  -b <file>          use custom tcp payload from binary file
+Basic Options:
+  -h <hostname>      hostname for obfuscation
+  -i <interface>     work on specified network interface
+
+General Options:
+  -4                 process IPv4 connections
+  -6                 process IPv6 connections
   -d                 run as a daemon
-  -f                 skip firewall rules
-  -h <hostname>      hostname for obfuscation (required)
-  -i <interface>     network interface name (required)
   -k                 kill the running process
+  -s                 enable silent mode
+  -w <file>          write log to <file> instead of stderr
+
+Advanced Options:
+  -b <file>          use TCP payload from binary file (ignores -h)
+  -f                 skip firewall rules
+  -g                 disable hop count estimation
   -m <mark>          fwmark for bypassing the queue
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
-  -s                 enable silent mode
   -t <ttl>           TTL for generated packets
-  -w <file>          write log to <file> instead of stderr
   -x <mask>          set the mask for fwmark
   -z                 use iptables commands instead of nft
 

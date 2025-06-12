@@ -40,37 +40,45 @@
 #include "rawsend.h"
 #include "signals.h"
 
+#ifndef PROGNAME
+#define PROGNAME "fakehttp"
+#endif /* PROGNAME */
+
 #ifndef VERSION
 #define VERSION "dev"
 #endif /* VERSION */
 
 static void print_usage(const char *name)
 {
-    fprintf(stderr,
-            "Usage: %s [options]\n"
-            "\n"
-            "Options:\n"
-            "  -4                 enable IPv4\n"
-            "  -6                 enable IPv6\n"
-            "  -b                 use custom tcp payload from binary file\n"
-            "  -d                 run as a daemon\n"
-            "  -f                 skip firewall rules\n"
-            "  -g                 disable hop count estimation\n"
-            "  -h <hostname>      hostname for obfuscation (required)\n"
-            "  -i <interface>     network interface name (required)\n"
-            "  -k                 kill the running process\n"
-            "  -m <mark>          fwmark for bypassing the queue\n"
-            "  -n <number>        netfilter queue number\n"
-            "  -r <repeat>        duplicate generated packets for <repeat> "
-            "times\n"
-            "  -s                 enable silent mode\n"
-            "  -t <ttl>           TTL for generated packets\n"
-            "  -w <file>          write log to <file> instead of stderr\n"
-            "  -x <mask>          set the mask for fwmark\n"
-            "  -z                 use iptables commands instead of nft\n"
-            "\n"
-            "FakeHTTP version " VERSION "\n",
-            name);
+    static const char *usage_fmt =
+        "Usage: %s [options]\n"
+        "\n"
+        "Basic Options:\n"
+        "  -h <hostname>      hostname for obfuscation\n"
+        "  -i <interface>     work on specified network interface\n"
+        "\n"
+        "General Options:\n"
+        "  -4                 process IPv4 connections\n"
+        "  -6                 process IPv6 connections\n"
+        "  -d                 run as a daemon\n"
+        "  -k                 kill the running process\n"
+        "  -s                 enable silent mode\n"
+        "  -w <file>          write log to <file> instead of stderr\n"
+        "\n"
+        "Advanced Options:\n"
+        "  -b <file>          use TCP payload from binary file (ignores -h)\n"
+        "  -f                 skip firewall rules\n"
+        "  -g                 disable hop count estimation\n"
+        "  -m <mark>          fwmark for bypassing the queue\n"
+        "  -n <number>        netfilter queue number\n"
+        "  -r <repeat>        duplicate generated packets for <repeat> times\n"
+        "  -t <ttl>           TTL for generated packets\n"
+        "  -x <mask>          set the mask for fwmark\n"
+        "  -z                 use iptables commands instead of nft\n"
+        "\n"
+        "FakeHTTP version " VERSION "\n";
+
+    fprintf(stderr, usage_fmt, name);
 }
 
 
@@ -81,6 +89,10 @@ int main(int argc, char *argv[])
     char *ipproto_info;
 
     if (!argc || !argv[0]) {
+        print_usage(PROGNAME);
+        return EXIT_FAILURE;
+    } else if (argc == 1) {
+        print_usage(argv[0]);
         return EXIT_FAILURE;
     }
 
