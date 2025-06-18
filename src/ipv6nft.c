@@ -34,6 +34,22 @@ static int nft6_iface_setup(void)
     int res;
     char *nft_iface_cmd[] = {"nft", nftstr, NULL};
 
+    if (g_ctx.alliface) {
+        res = snprintf(nftstr, sizeof(nftstr),
+                       "add rule ip6 fakehttp fh_prerouting jump fh_rules");
+        if (res < 0 || (size_t) res >= sizeof(nftstr)) {
+            E("ERROR: snprintf(): %s", "failure");
+            return -1;
+        }
+
+        res = fh_execute_command(nft_iface_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+        return 0;
+    }
+
     cnt = sizeof(g_ctx.iface) / sizeof(*g_ctx.iface);
 
     for (i = 0; i < cnt && g_ctx.iface[i]; i++) {

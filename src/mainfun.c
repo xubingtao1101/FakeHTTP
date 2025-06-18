@@ -68,6 +68,7 @@ static void print_usage(const char *name)
         "  -w <file>          write log to <file> instead of stderr\n"
         "\n"
         "Advanced Options:\n"
+        "  -a                 work on all network interfaces (ignores -i)\n"
         "  -b <file>          use TCP payload from binary file (ignores -h)\n"
         "  -f                 skip firewall rules\n"
         "  -g                 disable hop count estimation\n"
@@ -103,7 +104,7 @@ int main(int argc, char *argv[])
     memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "0146b:dfh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "0146ab:dfh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -119,6 +120,10 @@ int main(int argc, char *argv[])
 
             case '6':
                 g_ctx.use_ipv6 = 1;
+                break;
+
+            case 'a':
+                g_ctx.alliface = 1;
                 break;
 
             case 'b':
@@ -286,7 +291,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (!iface_cnt) {
+    if (!g_ctx.alliface && !iface_cnt) {
         fprintf(stderr, "%s: option -i is required.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;
@@ -350,7 +355,9 @@ int main(int argc, char *argv[])
         EE("WARNING: setpriority(): %s", strerror(errno));
     }
 
-    if (iface_cnt > 1) {
+    if (g_ctx.alliface) {
+        iface_info = "all interfaces";
+    } else if (iface_cnt > 1) {
         iface_info = "multiple interfaces";
     } else {
         iface_info = g_ctx.iface[0];

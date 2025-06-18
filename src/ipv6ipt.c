@@ -33,9 +33,22 @@ static int ipt6_iface_setup(void)
     char iface_str[IFNAMSIZ];
     size_t i, cnt;
     int res;
+    char *ipt_alliface_cmd[] = {"ip6tables", "-w",         "-t",
+                                "mangle",    "-A",         "FAKEHTTP",
+                                "-j",        "FAKEHTTP_R", NULL};
+
     char *ipt_iface_cmd[] = {"ip6tables", "-w",         "-t", "mangle",
                              "-A",        "FAKEHTTP",   "-i", iface_str,
                              "-j",        "FAKEHTTP_R", NULL};
+
+    if (g_ctx.alliface) {
+        res = fh_execute_command(ipt_alliface_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+        return 0;
+    }
 
     cnt = sizeof(g_ctx.iface) / sizeof(*g_ctx.iface);
 

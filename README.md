@@ -32,6 +32,7 @@ General Options:
   -w <file>          write log to <file> instead of stderr
 
 Advanced Options:
+  -a                 work on all network interfaces (ignores -i)
   -b <file>          use TCP payload from binary file (ignores -h)
   -f                 skip firewall rules
   -g                 disable hop count estimation
