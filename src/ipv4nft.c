@@ -27,6 +27,35 @@
 #include "logging.h"
 #include "process.h"
 
+static int nft4_iface_setup(void)
+{
+    char nftstr[120];
+    size_t i, cnt;
+    int res;
+    char *nft_iface_cmd[] = {"nft", nftstr, NULL};
+
+    cnt = sizeof(g_ctx.iface) / sizeof(*g_ctx.iface);
+
+    for (i = 0; i < cnt && g_ctx.iface[i]; i++) {
+        res = snprintf(
+            nftstr, sizeof(nftstr),
+            "add rule ip fakehttp fh_prerouting iifname \"%s\" jump fh_rules",
+            g_ctx.iface[i]);
+        if (res < 0 || (size_t) res >= sizeof(nftstr)) {
+            E("ERROR: snprintf(): %s", "failure");
+            return -1;
+        }
+
+        res = fh_execute_command(nft_iface_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+    }
+    return 0;
+}
+
+
 int fh_nft4_setup(void)
 {
     size_t i, nft_opt_cmds_cnt;
@@ -38,7 +67,6 @@ int fh_nft4_setup(void)
         "    chain fh_prerouting {\n"
         "        type filter hook prerouting priority mangle - 5;\n"
         "        policy accept;\n"
-        "        jump fh_rules;\n"
         "    }\n"
         "\n"
         "    chain fh_rules {\n"
@@ -69,8 +97,8 @@ int fh_nft4_setup(void)
         /*
             send to nfqueue
         */
-        "        iifname \"%s\" tcp flags & (fin | rst | ack) == ack queue "
-        "num %" PRIu32 " bypass;\n"
+        "        tcp flags & (fin | rst | ack) == ack queue num %" PRIu32
+        " bypass;\n"
 
         "    }\n"
         "}\n";
@@ -93,7 +121,7 @@ int fh_nft4_setup(void)
     res = snprintf(nft_conf_buff, sizeof(nft_conf_buff), nft_conf_fmt,
                    g_ctx.fwmask, g_ctx.fwmark, ~g_ctx.fwmask, g_ctx.fwmark,
                    g_ctx.fwmask, g_ctx.fwmark, ~g_ctx.fwmask, g_ctx.fwmark,
-                   g_ctx.fwmask, g_ctx.fwmark, g_ctx.iface, g_ctx.nfqnum);
+                   g_ctx.fwmask, g_ctx.fwmark, g_ctx.nfqnum);
     if (res < 0 || (size_t) res >= sizeof(nft_conf_buff)) {
         E("ERROR: snprintf(): %s", "failure");
         return -1;
@@ -109,6 +137,12 @@ int fh_nft4_setup(void)
 
     for (i = 0; i < nft_opt_cmds_cnt; i++) {
         fh_execute_command(nft_opt_cmds[i], 1, NULL);
+    }
+
+    res = nft4_iface_setup();
+    if (res < 0) {
+        E(T(nft4_iface_setup));
+        return -1;
     }
 
     return 0;

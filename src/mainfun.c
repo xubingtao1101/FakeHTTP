@@ -88,7 +88,8 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
-    char *direction_info, *ipproto_info;
+    size_t iface_cnt;
+    const char *iface_info, *direction_info, *ipproto_info;
 
     if (!argc || !argv[0]) {
         print_usage(PROGNAME);
@@ -98,6 +99,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    iface_cnt = 0;
+    memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
     exitcode = EXIT_FAILURE;
 
     while ((opt = getopt(argc, argv, "0146b:dfh:i:km:n:r:st:w:x:z")) != -1) {
@@ -146,13 +149,29 @@ int main(int argc, char *argv[])
                 break;
 
             case 'i':
-                g_ctx.iface = optarg;
+                iface_cnt++;
+                if (iface_cnt > sizeof(g_ctx.iface) / sizeof(*g_ctx.iface)) {
+                    fprintf(stderr, "%s: too many interfaces specified.\n",
+                            argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+
+                if (!optarg[0]) {
+                    fprintf(stderr, "%s: interface name cannot be empty.\n",
+                            argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+
                 if (strlen(optarg) > IFNAMSIZ - 1) {
                     fprintf(stderr, "%s: interface name is too long.\n",
                             argv[0]);
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
                 }
+
+                g_ctx.iface[iface_cnt - 1] = optarg;
                 break;
 
             case 'k':
@@ -267,7 +286,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (!g_ctx.iface) {
+    if (!iface_cnt) {
         fprintf(stderr, "%s: option -i is required.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;
@@ -331,6 +350,12 @@ int main(int argc, char *argv[])
         EE("WARNING: setpriority(): %s", strerror(errno));
     }
 
+    if (iface_cnt > 1) {
+        iface_info = "multiple interfaces";
+    } else {
+        iface_info = g_ctx.iface[0];
+    }
+
     if (g_ctx.use_ipv4 && !g_ctx.use_ipv6) {
         ipproto_info = " (IPv4 only)";
     } else if (!g_ctx.use_ipv4 && g_ctx.use_ipv6) {
@@ -347,8 +372,8 @@ int main(int argc, char *argv[])
         direction_info = "";
     }
 
-    E("listening on %s%s%s, netfilter queue number %" PRIu32 "...",
-      g_ctx.iface, ipproto_info, direction_info, g_ctx.nfqnum);
+    E("listening on %s%s%s, netfilter queue number %" PRIu32 "...", iface_info,
+      ipproto_info, direction_info, g_ctx.nfqnum);
 
     /*
         Main Loop
