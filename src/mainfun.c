@@ -285,7 +285,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (!g_ctx.hostname) {
+    if (!g_ctx.payloadpath && !g_ctx.hostname) {
         fprintf(stderr, "%s: option -h is required.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;
