@@ -92,9 +92,9 @@ int fh_pkt4_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
 
 
 int fh_pkt4_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
-                 struct sockaddr *daddr, uint16_t sport_be, uint16_t dport_be,
-                 uint32_t seq_be, uint32_t ackseq_be, int psh,
-                 char *tcp_payload, size_t tcp_payload_size)
+                 struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
+                 uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be,
+                 int psh, char *tcp_payload, size_t tcp_payload_size)
 {
     size_t pkt_len;
     struct iphdr *iph;
@@ -127,7 +127,7 @@ int fh_pkt4_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
     iph->tot_len = htons(pkt_len);
     iph->id = ((rand() & 0xff) << 8) | (rand() & 0xff);
     iph->frag_off = htons(1 << 14 /* DF */);
-    iph->ttl = g_ctx.ttl;
+    iph->ttl = ttl;
     iph->protocol = IPPROTO_TCP;
     iph->check = 0;
     iph->saddr = saddr_in->sin_addr.s_addr;

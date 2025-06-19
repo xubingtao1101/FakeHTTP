@@ -29,8 +29,8 @@ int fh_pkt4_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
                   struct tcphdr **tcph_ptr, int *tcp_payload_len);
 
 int fh_pkt4_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
-                 struct sockaddr *daddr, uint16_t sport_be, uint16_t dport_be,
-                 uint32_t seq_be, uint32_t ackseq_be, int psh,
-                 char *tcp_payload, size_t tcp_payload_size);
+                 struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
+                 uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be,
+                 int psh, char *tcp_payload, size_t tcp_payload_size);
 
 #endif /* FH_IPV4PKT_H */

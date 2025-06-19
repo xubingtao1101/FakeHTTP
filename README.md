@@ -41,6 +41,7 @@ Advanced Options:
   -r <repeat>        duplicate generated packets for <repeat> times
   -t <ttl>           TTL for generated packets
   -x <mask>          set the mask for fwmark
+  -y <pct>           raise TTL dynamically to <pct>% of estimated hops
   -z                 use iptables commands instead of nft
 
 ```

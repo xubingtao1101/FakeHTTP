@@ -88,9 +88,9 @@ int fh_pkt6_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
 
 
 int fh_pkt6_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
-                 struct sockaddr *daddr, uint16_t sport_be, uint16_t dport_be,
-                 uint32_t seq_be, uint32_t ackseq_be, int psh,
-                 char *tcp_payload, size_t tcp_payload_size)
+                 struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
+                 uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be,
+                 int psh, char *tcp_payload, size_t tcp_payload_size)
 {
     size_t pkt_len;
     struct ip6_hdr *ip6h;
@@ -121,7 +121,7 @@ int fh_pkt6_make(char *buffer, size_t buffer_size, struct sockaddr *saddr,
                            0 /* flow */);
     ip6h->ip6_plen = htons(sizeof(*tcph) + tcp_payload_size);
     ip6h->ip6_nxt = IPPROTO_TCP;
-    ip6h->ip6_hops = g_ctx.ttl;
+    ip6h->ip6_hops = ttl;
     memcpy(&ip6h->ip6_src, &saddr_in6->sin6_addr, sizeof(struct in6_addr));
     memcpy(&ip6h->ip6_dst, &daddr_in6->sin6_addr, sizeof(struct in6_addr));
 

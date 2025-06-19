@@ -77,6 +77,8 @@ static void print_usage(const char *name)
         "  -r <repeat>        duplicate generated packets for <repeat> times\n"
         "  -t <ttl>           TTL for generated packets\n"
         "  -x <mask>          set the mask for fwmark\n"
+        "  -y <pct>           raise TTL dynamically to <pct>%% of estimated "
+        "hops\n"
         "  -z                 use iptables commands instead of nft\n"
         "\n"
         "FakeHTTP version " VERSION "\n";
@@ -104,7 +106,8 @@ int main(int argc, char *argv[])
     memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:y:z")) !=
+           -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -251,6 +254,16 @@ int main(int argc, char *argv[])
                 g_ctx.fwmask = tmp;
                 break;
 
+            case 'y':
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp >= 100) {
+                    fprintf(stderr, "%s: invalid value for -y.\n", argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+                g_ctx.dynamic_pct = tmp;
+                break;
+
             case 'z':
                 g_ctx.use_iptables = 1;
                 break;
@@ -297,6 +310,12 @@ int main(int argc, char *argv[])
 
     if (!g_ctx.alliface && !iface_cnt) {
         fprintf(stderr, "%s: option -i is required.\n", argv[0]);
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    if (g_ctx.dynamic_pct && g_ctx.nohopest) {
+        fprintf(stderr, "%s: option -y cannot be used with -g.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }

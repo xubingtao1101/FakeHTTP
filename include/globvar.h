@@ -45,6 +45,7 @@ struct fh_context {
     /* -t */ uint8_t ttl;
     /* -w */ const char *logpath;
     /* -x */ uint32_t fwmask;
+    /* -y */ int dynamic_pct;
     /* -z */ int use_iptables;
 };
 
