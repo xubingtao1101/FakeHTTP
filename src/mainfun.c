@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
     memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
     exitcode = EXIT_FAILURE;
 
-    while ((opt = getopt(argc, argv, "0146ab:dfh:i:km:n:r:st:w:x:z")) != -1) {
+    while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -142,6 +142,10 @@ int main(int argc, char *argv[])
 
             case 'f':
                 g_ctx.skipfw = 1;
+                break;
+
+            case 'g':
+                g_ctx.nohopest = 1;
                 break;
 
             case 'h':
