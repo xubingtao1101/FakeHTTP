@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
-    size_t iface_cnt;
+    size_t hname_cnt, iface_cnt;
     const char *iface_info, *direction_info, *ipproto_info;
 
     if (!argc || !argv[0]) {
@@ -102,7 +102,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    iface_cnt = 0;
+    hname_cnt = iface_cnt = 0;
+    memset(g_ctx.hostname, 0, sizeof(g_ctx.hostname));
     memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
     exitcode = EXIT_FAILURE;
 
@@ -152,12 +153,29 @@ int main(int argc, char *argv[])
                 break;
 
             case 'h':
+                hname_cnt++;
+                if (hname_cnt >
+                    sizeof(g_ctx.hostname) / sizeof(*g_ctx.hostname)) {
+                    fprintf(stderr, "%s: too many hostnames specified.\n",
+                            argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+
+                if (!optarg[0]) {
+                    fprintf(stderr, "%s: hostname cannot be empty.\n",
+                            argv[0]);
+                    print_usage(argv[0]);
+                    return EXIT_FAILURE;
+                }
+
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
                     fprintf(stderr, "%s: hostname is too long.\n", argv[0]);
                     print_usage(argv[0]);
                     return EXIT_FAILURE;
                 }
-                g_ctx.hostname = optarg;
+
+                g_ctx.hostname[hname_cnt - 1] = optarg;
                 break;
 
             case 'i':
@@ -302,7 +320,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (!g_ctx.payloadpath && !g_ctx.hostname) {
+    if (!g_ctx.payloadpath && !hname_cnt) {
         fprintf(stderr, "%s: option -h is required.\n", argv[0]);
         print_usage(argv[0]);
         return EXIT_FAILURE;

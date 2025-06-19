@@ -78,21 +78,32 @@ invalid:
 }
 
 
-static int setup_http_buff(void)
+static int setup_http_buff(int rotate)
 {
+    static const size_t maxcnt = sizeof(g_ctx.hostname) /
+                                 sizeof(*g_ctx.hostname);
     static const char *http_fmt = "GET / HTTP/1.1\r\n"
                                   "Host: %s\r\n"
                                   "Accept: */*\r\n"
                                   "\r\n";
+    static size_t i = 0;
 
     FILE *fp;
     int res;
 
     if (!g_ctx.payloadpath) {
-        http_len = snprintf(http_buff, HTTP_BUFSIZ, http_fmt, g_ctx.hostname);
+        http_len = snprintf(http_buff, HTTP_BUFSIZ, http_fmt,
+                            g_ctx.hostname[i]);
         if (http_len < 0 || (size_t) http_len >= HTTP_BUFSIZ) {
             E("ERROR: snprintf(): %s", "failure");
             return -1;
+        }
+
+        if (rotate) {
+            i++;
+            if (i == maxcnt || !g_ctx.hostname[i]) {
+                i = 0;
+            }
         }
 
         return 0;
@@ -125,6 +136,22 @@ static int setup_http_buff(void)
     if (res < 0) {
         E("ERROR: fclose(): %s", strerror(errno));
         return -1;
+    }
+
+    return 0;
+}
+
+
+static int rotate_hostname(void)
+{
+    int res;
+
+    if (!g_ctx.payloadpath && g_ctx.hostname[1]) {
+        res = setup_http_buff(1);
+        if (res < 0) {
+            E(T(setup_http_buff));
+            return -1;
+        }
     }
 
     return 0;
@@ -222,7 +249,7 @@ int fh_rawsend_setup(void)
         return -1;
     }
 
-    res = setup_http_buff();
+    res = setup_http_buff(0);
     if (res < 0) {
         E(T(setup_http_buff));
         goto free_buff;
@@ -376,6 +403,12 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
         }
         E_INFO("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source),
                dst_ip, ntohs(tcph->dest));
+
+        res = rotate_hostname();
+        if (res < 0) {
+            E(T(rotate_hostname));
+            return -1;
+        }
 
         for (i = 0; i < g_ctx.repeat; i++) {
             res = send_http(sll, daddr, saddr, snd_ttl, tcph->dest,
