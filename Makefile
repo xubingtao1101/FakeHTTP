@@ -10,7 +10,8 @@ BUILDDIR=build
 SRCS := $(wildcard $(SRCDIR)/*.c)
 OBJS := $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(SRCS))
 
-override CFLAGS+=-O3 -std=c99 -I$(INCLUDEDIR) -pedantic -Wall -Wextra
+override CFLAGS+=-O3 -std=c99 -I$(INCLUDEDIR) -frandom-seed=fakehttp \
+	-pedantic -Wall -Wextra -Wdate-time
 override LDFLAGS+=-lnetfilter_queue -lnfnetlink -lmnl
 
 ifdef VERSION
