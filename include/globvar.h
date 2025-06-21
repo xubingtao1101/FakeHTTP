@@ -35,8 +35,8 @@ struct fh_context {
     /* -d */ int daemon;
     /* -f */ int skipfw;
     /* -g */ int nohopest;
-    /* -h */ const char *hostname[32];
-    /* -i */ const char *iface[32];
+    /* -h */ const char *hostname[64];
+    /* -i */ const char *iface[64];
     /* -k */ int killproc;
     /* -m */ uint32_t fwmark;
     /* -n */ uint32_t nfqnum;
