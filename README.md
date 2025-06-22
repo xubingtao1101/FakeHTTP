@@ -17,9 +17,14 @@ fakehttp -h www.example.com -i eth0
 ```
 Usage: fakehttp [options]
 
-Basic Options:
-  -h <hostname>      hostname for obfuscation
+Interface Options:
+  -a                 work on all network interfaces (ignores -i)
   -i <interface>     work on specified network interface
+
+Payload Options:
+  -b <file>          use TCP payload from binary file
+  -e <hostname>      hostname for HTTPS obfuscation
+  -h <hostname>      hostname for HTTP obfuscation
 
 General Options:
   -0                 process inbound connections
@@ -32,8 +37,6 @@ General Options:
   -w <file>          write log to <file> instead of stderr
 
 Advanced Options:
-  -a                 work on all network interfaces (ignores -i)
-  -b <file>          use TCP payload from binary file
   -f                 skip firewall rules
   -g                 disable hop count estimation
   -m <mark>          fwmark for bypassing the queue

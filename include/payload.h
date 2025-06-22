@@ -26,6 +26,7 @@
 enum payload_type {
     FH_PAYLOAD_END = 0,
     FH_PAYLOAD_HTTP,
+    FH_PAYLOAD_HTTPS,
     FH_PAYLOAD_CUSTOM
 };
 

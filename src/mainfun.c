@@ -54,9 +54,14 @@ static void print_usage(const char *name)
     static const char *usage_fmt =
         "Usage: %s [options]\n"
         "\n"
-        "Basic Options:\n"
-        "  -h <hostname>      hostname for obfuscation\n"
+        "Interface Options:\n"
+        "  -a                 work on all network interfaces (ignores -i)\n"
         "  -i <interface>     work on specified network interface\n"
+        "\n"
+        "Payload Options:\n"
+        "  -b <file>          use TCP payload from binary file\n"
+        "  -e <hostname>      hostname for HTTPS obfuscation\n"
+        "  -h <hostname>      hostname for HTTP obfuscation\n"
         "\n"
         "General Options:\n"
         "  -0                 process inbound connections\n"
@@ -69,8 +74,6 @@ static void print_usage(const char *name)
         "  -w <file>          write log to <file> instead of stderr\n"
         "\n"
         "Advanced Options:\n"
-        "  -a                 work on all network interfaces (ignores -i)\n"
-        "  -b <file>          use TCP payload from binary file\n"
         "  -f                 skip firewall rules\n"
         "  -g                 disable hop count estimation\n"
         "  -m <mark>          fwmark for bypassing the queue\n"
@@ -121,7 +124,7 @@ int main(int argc, char *argv[])
 
     plinfo_cnt = iface_cnt = 0;
 
-    while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:y:z")) !=
+    while ((opt = getopt(argc, argv, "0146ab:de:fgh:i:km:n:r:st:w:x:y:z")) !=
            -1) {
         switch (opt) {
             case '0':
@@ -145,6 +148,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'b':
+            case 'e':
             case 'h':
                 if (!optarg[0]) {
                     fprintf(stderr, "%s: value of -%c cannot be empty.\n",
@@ -169,6 +173,8 @@ int main(int argc, char *argv[])
 
                 g_ctx.plinfo[plinfo_cnt - 1].type = opt == 'b'
                                                         ? FH_PAYLOAD_CUSTOM
+                                                    : opt == 'e'
+                                                        ? FH_PAYLOAD_HTTPS
                                                         : FH_PAYLOAD_HTTP;
                 g_ctx.plinfo[plinfo_cnt - 1].info = optarg;
                 break;
