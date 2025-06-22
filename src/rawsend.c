@@ -78,46 +78,6 @@ invalid:
 }
 
 
-static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
-                    struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
-                    uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
-{
-    int pkt_len;
-    ssize_t nbytes;
-    uint8_t pkt_buff[1600] __attribute__((aligned));
-
-    if (daddr->sa_family == AF_INET) {
-        pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
-                               sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
-                               0);
-        if (pkt_len < 0) {
-            E(T(fh_pkt4_make));
-            return -1;
-        }
-    } else if (daddr->sa_family == AF_INET6) {
-        pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
-                               sport_be, dport_be, seq_be, ackseq_be, 0, NULL,
-                               0);
-        if (pkt_len < 0) {
-            E(T(fh_pkt6_make));
-            return -1;
-        }
-    } else {
-        E("ERROR: Unknown address family: %d", (int) daddr->sa_family);
-        return -1;
-    }
-
-    nbytes = sendto(sockfd, pkt_buff, pkt_len, 0, (struct sockaddr *) sll,
-                    sizeof(*sll));
-    if (nbytes < 0) {
-        E("ERROR: sendto(): %s", strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-
 static int send_payload(struct sockaddr_ll *sll, struct sockaddr *saddr,
                         struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
                         uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
@@ -293,18 +253,6 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
         ack_new = ntohl(tcph->seq);
         ack_new++;
         ack_new = htonl(ack_new);
-
-        for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_ack(sll, daddr, saddr, snd_ttl, tcph->dest,
-                           tcph->source, tcph->ack_seq, ack_new);
-            if (res < 0) {
-                E(T(send_ack));
-                return -1;
-            }
-        }
-        E_INFO("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source),
-               dst_ip, ntohs(tcph->dest));
-
 
         th_payload_get(&payload, &payload_len);
         for (i = 0; i < g_ctx.repeat; i++) {
