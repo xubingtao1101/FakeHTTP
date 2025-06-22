@@ -36,6 +36,7 @@
 #include "logging.h"
 #include "nfqueue.h"
 #include "nfrules.h"
+#include "payload.h"
 #include "process.h"
 #include "rawsend.h"
 #include "signals.h"
@@ -69,7 +70,7 @@ static void print_usage(const char *name)
         "\n"
         "Advanced Options:\n"
         "  -a                 work on all network interfaces (ignores -i)\n"
-        "  -b <file>          use TCP payload from binary file (ignores -h)\n"
+        "  -b <file>          use TCP payload from binary file\n"
         "  -f                 skip firewall rules\n"
         "  -g                 disable hop count estimation\n"
         "  -m <mark>          fwmark for bypassing the queue\n"
@@ -91,7 +92,7 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
-    size_t hname_cap, iface_cap, hname_cnt, iface_cnt;
+    size_t plinfo_cap, iface_cap, plinfo_cnt, iface_cnt;
     const char *iface_info, *direction_info, *ipproto_info;
 
     exitcode = EXIT_FAILURE;
@@ -104,9 +105,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    hname_cap = 32;
-    g_ctx.hostname = calloc(hname_cap, sizeof(*g_ctx.hostname));
-    if (!g_ctx.hostname) {
+    plinfo_cap = 32;
+    g_ctx.plinfo = calloc(plinfo_cap, sizeof(*g_ctx.plinfo));
+    if (!g_ctx.plinfo) {
         fprintf(stderr, "%s: calloc(): %s.\n", argv[0], strerror(errno));
         goto free_mem;
     }
@@ -118,7 +119,7 @@ int main(int argc, char *argv[])
         goto free_mem;
     }
 
-    hname_cnt = iface_cnt = 0;
+    plinfo_cnt = iface_cnt = 0;
 
     while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:y:z")) !=
            -1) {
@@ -144,13 +145,32 @@ int main(int argc, char *argv[])
                 break;
 
             case 'b':
-                g_ctx.payloadpath = optarg;
-                if (strlen(g_ctx.payloadpath) > PATH_MAX - 1) {
-                    fprintf(stderr, "%s: path of payload file is too long.\n",
-                            argv[0]);
+            case 'h':
+                if (!optarg[0]) {
+                    fprintf(stderr, "%s: value of -%c cannot be empty.\n",
+                            argv[0], opt);
                     print_usage(argv[0]);
                     goto free_mem;
                 }
+
+                plinfo_cnt++;
+                if (plinfo_cnt >= plinfo_cap - 1) {
+                    g_ctx.plinfo = realloc(
+                        g_ctx.plinfo, 2 * plinfo_cap * sizeof(*g_ctx.plinfo));
+                    if (!g_ctx.plinfo) {
+                        fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
+                                strerror(errno));
+                        goto free_mem;
+                    }
+                    memset(&g_ctx.plinfo[plinfo_cap], 0,
+                           plinfo_cap * sizeof(*g_ctx.plinfo));
+                    plinfo_cap *= 2;
+                }
+
+                g_ctx.plinfo[plinfo_cnt - 1].type = opt == 'b'
+                                                        ? FH_PAYLOAD_CUSTOM
+                                                        : FH_PAYLOAD_HTTP;
+                g_ctx.plinfo[plinfo_cnt - 1].info = optarg;
                 break;
 
             case 'd':
@@ -163,38 +183,6 @@ int main(int argc, char *argv[])
 
             case 'g':
                 g_ctx.nohopest = 1;
-                break;
-
-            case 'h':
-                hname_cnt++;
-                if (hname_cnt >= hname_cap - 1) {
-                    g_ctx.hostname = realloc(
-                        g_ctx.hostname,
-                        2 * hname_cap * sizeof(*g_ctx.hostname));
-                    if (!g_ctx.hostname) {
-                        fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
-                                strerror(errno));
-                        goto free_mem;
-                    }
-                    memset(&g_ctx.hostname[hname_cap], 0,
-                           hname_cap * sizeof(*g_ctx.hostname));
-                    hname_cap *= 2;
-                }
-
-                if (!optarg[0]) {
-                    fprintf(stderr, "%s: hostname cannot be empty.\n",
-                            argv[0]);
-                    print_usage(argv[0]);
-                    goto free_mem;
-                }
-
-                if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
-                    fprintf(stderr, "%s: hostname is too long.\n", argv[0]);
-                    print_usage(argv[0]);
-                    goto free_mem;
-                }
-
-                g_ctx.hostname[hname_cnt - 1] = optarg;
                 break;
 
             case 'i':
@@ -345,8 +333,8 @@ int main(int argc, char *argv[])
         goto free_mem;
     }
 
-    if (!g_ctx.payloadpath && !hname_cnt) {
-        fprintf(stderr, "%s: option -h is required.\n", argv[0]);
+    if (!plinfo_cnt) {
+        fprintf(stderr, "%s: option -h or -b is required.\n", argv[0]);
         print_usage(argv[0]);
         goto free_mem;
     }
@@ -392,10 +380,16 @@ int main(int argc, char *argv[])
     E("Home page: https://github.com/MikeWang000000/FakeHTTP");
     E("");
 
+    res = fh_payload_setup();
+    if (res < 0) {
+        EE(T(fh_payload_setup));
+        goto cleanup_logger;
+    }
+
     res = fh_rawsend_setup();
     if (res < 0) {
         EE(T(fh_rawsend_setup));
-        goto cleanup_logger;
+        goto cleanup_payload;
     }
 
     res = fh_nfq_setup();
@@ -469,12 +463,15 @@ cleanup_nfq:
 cleanup_rawsend:
     fh_rawsend_cleanup();
 
+cleanup_payload:
+    fh_payload_cleanup();
+
 cleanup_logger:
     fh_logger_cleanup();
 
 free_mem:
-    if (g_ctx.hostname) {
-        free(g_ctx.hostname);
+    if (g_ctx.plinfo) {
+        free(g_ctx.plinfo);
     }
 
     if (g_ctx.iface) {

@@ -21,6 +21,7 @@
 #include "rawsend.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -33,11 +34,10 @@
 #include "ipv4pkt.h"
 #include "ipv6pkt.h"
 #include "logging.h"
+#include "payload.h"
 
-#define HTTP_BUFSIZ 1200
-
-static char *http_buff = NULL;
-static int http_len = 0;
+static uint8_t *payload = NULL;
+static size_t payload_len = 0;
 static int sockfd = -1;
 
 static int hop_estimate(uint8_t ttl)
@@ -78,91 +78,13 @@ invalid:
 }
 
 
-static int setup_http_buff(int rotate)
-{
-    static const char *http_fmt = "GET / HTTP/1.1\r\n"
-                                  "Host: %s\r\n"
-                                  "Accept: */*\r\n"
-                                  "\r\n";
-    static size_t i = 0;
-
-    FILE *fp;
-    int res;
-
-    if (!g_ctx.payloadpath) {
-        http_len = snprintf(http_buff, HTTP_BUFSIZ, http_fmt,
-                            g_ctx.hostname[i]);
-        if (http_len < 0 || (size_t) http_len >= HTTP_BUFSIZ) {
-            E("ERROR: snprintf(): %s", "failure");
-            return -1;
-        }
-
-        if (rotate) {
-            i++;
-            if (!g_ctx.hostname[i]) {
-                i = 0;
-            }
-        }
-
-        return 0;
-    }
-
-    fp = fopen(g_ctx.payloadpath, "rb");
-    if (!fp) {
-        E("ERROR: fopen(): %s: %s", g_ctx.payloadpath, strerror(errno));
-        return -1;
-    }
-
-    while (!feof(fp) && !ferror(fp) && http_len < HTTP_BUFSIZ) {
-        http_len += fread(http_buff + http_len, 1, HTTP_BUFSIZ - http_len, fp);
-    }
-
-    if (ferror(fp)) {
-        E("ERROR: fread(): %s: %s", g_ctx.payloadpath, "failure");
-        fclose(fp);
-        return -1;
-    }
-
-    if (!feof(fp)) {
-        E("ERROR: %s: Data too long. Maximum length is %d", g_ctx.payloadpath,
-          HTTP_BUFSIZ);
-        fclose(fp);
-        return -1;
-    }
-
-    res = fclose(fp);
-    if (res < 0) {
-        E("ERROR: fclose(): %s", strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-
-static int rotate_hostname(void)
-{
-    int res;
-
-    if (!g_ctx.payloadpath && g_ctx.hostname[1]) {
-        res = setup_http_buff(1);
-        if (res < 0) {
-            E(T(setup_http_buff));
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-
 static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
                     struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
                     uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
 {
     int pkt_len;
     ssize_t nbytes;
-    char pkt_buff[1600] __attribute__((aligned));
+    uint8_t pkt_buff[1600] __attribute__((aligned));
 
     if (daddr->sa_family == AF_INET) {
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
@@ -196,18 +118,18 @@ static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
 }
 
 
-static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
-                     struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
-                     uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
+static int send_payload(struct sockaddr_ll *sll, struct sockaddr *saddr,
+                        struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
+                        uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be)
 {
     int pkt_len;
     ssize_t nbytes;
-    char pkt_buff[1600] __attribute__((aligned));
+    uint8_t pkt_buff[1600] __attribute__((aligned));
 
     if (daddr->sa_family == AF_INET) {
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
                                sport_be, dport_be, seq_be, ackseq_be, 1,
-                               http_buff, http_len);
+                               payload, payload_len);
         if (pkt_len < 0) {
             E(T(fh_pkt4_make));
             return -1;
@@ -215,7 +137,7 @@ static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
     } else if (daddr->sa_family == AF_INET6) {
         pkt_len = fh_pkt6_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
                                sport_be, dport_be, seq_be, ackseq_be, 1,
-                               http_buff, http_len);
+                               payload, payload_len);
         if (pkt_len < 0) {
             E(T(fh_pkt6_make));
             return -1;
@@ -241,18 +163,6 @@ int fh_rawsend_setup(void)
     int res, opt;
     const char *err_hint;
 
-    http_buff = malloc(HTTP_BUFSIZ);
-    if (!http_buff) {
-        E("ERROR: malloc(): %s", strerror(errno));
-        return -1;
-    }
-
-    res = setup_http_buff(0);
-    if (res < 0) {
-        E(T(setup_http_buff));
-        goto free_buff;
-    }
-
     sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
     if (sockfd < 0) {
         switch (errno) {
@@ -263,7 +173,7 @@ int fh_rawsend_setup(void)
                 err_hint = "";
         }
         E("ERROR: socket(): %s%s", strerror(errno), err_hint);
-        goto free_buff;
+        return -1;
     }
 
     res = setsockopt(sockfd, SOL_SOCKET, SO_MARK, &g_ctx.fwmark,
@@ -296,19 +206,12 @@ int fh_rawsend_setup(void)
 close_socket:
     close(sockfd);
 
-free_buff:
-    free(http_buff);
-
     return -1;
 }
 
 
 void fh_rawsend_cleanup(void)
 {
-    if (http_buff) {
-        free(http_buff);
-    }
-
     if (sockfd >= 0) {
         close(sockfd);
         sockfd = -1;
@@ -402,21 +305,17 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
         E_INFO("%s:%u <===ACK(*)=== %s:%u", src_ip, ntohs(tcph->source),
                dst_ip, ntohs(tcph->dest));
 
-        res = rotate_hostname();
-        if (res < 0) {
-            E(T(rotate_hostname));
-            return -1;
-        }
 
+        th_payload_get(&payload, &payload_len);
         for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(sll, daddr, saddr, snd_ttl, tcph->dest,
-                            tcph->source, tcph->ack_seq, ack_new);
+            res = send_payload(sll, daddr, saddr, snd_ttl, tcph->dest,
+                               tcph->source, tcph->ack_seq, ack_new);
             if (res < 0) {
-                E(T(send_http));
+                E(T(send_payload));
                 return -1;
             }
         }
-        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
+        E_INFO("%s:%u <===FAKE(*)=== %s:%u", src_ip, ntohs(tcph->source),
                dst_ip, ntohs(tcph->dest));
 
         return 0;
@@ -430,15 +329,16 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len)
         E_INFO("%s:%u ===ACK===> %s:%u", src_ip, ntohs(tcph->source), dst_ip,
                ntohs(tcph->dest));
 
+        th_payload_get(&payload, &payload_len);
         for (i = 0; i < g_ctx.repeat; i++) {
-            res = send_http(sll, daddr, saddr, snd_ttl, tcph->dest,
-                            tcph->source, tcph->ack_seq, tcph->seq);
+            res = send_payload(sll, daddr, saddr, snd_ttl, tcph->dest,
+                               tcph->source, tcph->ack_seq, tcph->seq);
             if (res < 0) {
-                E(T(send_http));
+                E(T(send_payload));
                 return -1;
             }
         }
-        E_INFO("%s:%u <===HTTP(*)=== %s:%u", src_ip, ntohs(tcph->source),
+        E_INFO("%s:%u <===FAKE(*)=== %s:%u", src_ip, ntohs(tcph->source),
                dst_ip, ntohs(tcph->dest));
 
         return 0;

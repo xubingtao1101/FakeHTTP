@@ -1,5 +1,5 @@
 /*
- * ipv4pkt.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
+ * payload.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
  *
  * Copyright (C) 2025  MikeWang000000
  *
@@ -17,20 +17,27 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef FH_IPV4PKT_H
-#define FH_IPV4PKT_H
+#ifndef FH_PAYLOAD_H
+#define FH_PAYLOAD_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <netinet/tcp.h>
 
-int fh_pkt4_parse(void *pkt_data, int pkt_len, struct sockaddr *saddr,
-                  struct sockaddr *daddr, uint8_t *ttl,
-                  struct tcphdr **tcph_ptr, int *tcp_payload_len);
+enum payload_type {
+    FH_PAYLOAD_END = 0,
+    FH_PAYLOAD_HTTP,
+    FH_PAYLOAD_CUSTOM
+};
 
-int fh_pkt4_make(uint8_t *buffer, size_t buffer_size, struct sockaddr *saddr,
-                 struct sockaddr *daddr, uint8_t ttl, uint16_t sport_be,
-                 uint16_t dport_be, uint32_t seq_be, uint32_t ackseq_be,
-                 int psh, uint8_t *tcp_payload, size_t tcp_payload_size);
+struct payload_info {
+    enum payload_type type;
+    char *info;
+};
 
-#endif /* FH_IPV4PKT_H */
+int fh_payload_setup(void);
+
+void fh_payload_cleanup(void);
+
+void th_payload_get(uint8_t **payload_ptr, size_t *payload_len);
+
+#endif /* FH_PAYLOAD_H */

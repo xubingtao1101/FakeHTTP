@@ -33,7 +33,7 @@ General Options:
 
 Advanced Options:
   -a                 work on all network interfaces (ignores -i)
-  -b <file>          use TCP payload from binary file (ignores -h)
+  -b <file>          use TCP payload from binary file
   -f                 skip firewall rules
   -g                 disable hop count estimation
   -m <mark>          fwmark for bypassing the queue

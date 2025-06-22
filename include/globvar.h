@@ -23,19 +23,20 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "payload.h"
+
 struct fh_context {
     int exit;
     FILE *logfp;
+    /* -b, -h */ struct payload_info *plinfo;
     /* -0 */ int inbound;
     /* -1 */ int outbound;
     /* -4 */ int use_ipv4;
     /* -6 */ int use_ipv6;
     /* -a */ int alliface;
-    /* -b */ const char *payloadpath;
     /* -d */ int daemon;
     /* -f */ int skipfw;
     /* -g */ int nohopest;
-    /* -h */ const char **hostname;
     /* -i */ const char **iface;
     /* -k */ int killproc;
     /* -m */ uint32_t fwmark;
