@@ -10,7 +10,7 @@ BUILDDIR=build
 SRCS := $(wildcard $(SRCDIR)/*.c)
 OBJS := $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(SRCS))
 
-override CFLAGS+=-O3 -std=c99 -I$(INCLUDEDIR) -frandom-seed=fakehttp \
+override CFLAGS+=-std=c99 -I$(INCLUDEDIR) -frandom-seed=fakehttp \
 	-pedantic -Wall -Wextra -Wdate-time
 override LDFLAGS+=-lnetfilter_queue -lnfnetlink -lmnl
 
@@ -24,7 +24,17 @@ ifeq ($(STATIC), 1)
 	override LDFLAGS += -static
 endif
 
+ifeq ($(DEBUG), 1)
+	override CFLAGS += -O0 -g3 -fsanitize=address,leak,undefined
+	override LDFLAGS += -fsanitize=address,leak,undefined
+else
+	override CFLAGS += -O3
+endif
+
 all: $(FAKEHTTP)
+
+debug:
+	$(MAKE) DEBUG=1
 
 clean:
 	$(RM) -r $(BUILDDIR)
@@ -40,7 +50,9 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
 
 $(FAKEHTTP): $(OBJS) $(MKS)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+ifneq ($(DEBUG), 1)
 	$(STRIP) $@
+endif
 
 install: all
 	mkdir -p $(DESTDIR)$(BINDIR)
@@ -49,7 +61,7 @@ install: all
 uninstall:
 	$(RM) $(DESTDIR)$(BINDIR)/fakehttp
 
-.PHONY: all clean install uninstall
+.PHONY: all debug clean install uninstall
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(OBJS:.o=.d)
