@@ -162,7 +162,7 @@ static int send_ack(struct sockaddr_ll *sll, struct sockaddr *saddr,
 {
     int pkt_len;
     ssize_t nbytes;
-    char pkt_buff[1024];
+    char pkt_buff[1600] __attribute__((aligned));
 
     if (daddr->sa_family == AF_INET) {
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
@@ -202,7 +202,7 @@ static int send_http(struct sockaddr_ll *sll, struct sockaddr *saddr,
 {
     int pkt_len;
     ssize_t nbytes;
-    char pkt_buff[1024];
+    char pkt_buff[1600] __attribute__((aligned));
 
     if (daddr->sa_family == AF_INET) {
         pkt_len = fh_pkt4_make(pkt_buff, sizeof(pkt_buff), saddr, daddr, ttl,
