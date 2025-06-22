@@ -30,7 +30,7 @@
 static int nft4_iface_setup(void)
 {
     char nftstr[120];
-    size_t i, cnt;
+    size_t i;
     int res;
     char *nft_iface_cmd[] = {"nft", nftstr, NULL};
 
@@ -50,9 +50,7 @@ static int nft4_iface_setup(void)
         return 0;
     }
 
-    cnt = sizeof(g_ctx.iface) / sizeof(*g_ctx.iface);
-
-    for (i = 0; i < cnt && g_ctx.iface[i]; i++) {
+    for (i = 0; g_ctx.iface[i]; i++) {
         res = snprintf(
             nftstr, sizeof(nftstr),
             "add rule ip fakehttp fh_prerouting iifname \"%s\" jump fh_rules",

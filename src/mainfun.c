@@ -91,8 +91,10 @@ int main(int argc, char *argv[])
 {
     unsigned long long tmp;
     int res, opt, exitcode;
-    size_t hname_cnt, iface_cnt;
+    size_t hname_cap, iface_cap, hname_cnt, iface_cnt;
     const char *iface_info, *direction_info, *ipproto_info;
+
+    exitcode = EXIT_FAILURE;
 
     if (!argc || !argv[0]) {
         print_usage(PROGNAME);
@@ -102,10 +104,21 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    hname_cap = 32;
+    g_ctx.hostname = calloc(hname_cap, sizeof(*g_ctx.hostname));
+    if (!g_ctx.hostname) {
+        fprintf(stderr, "%s: calloc(): %s.\n", argv[0], strerror(errno));
+        goto free_mem;
+    }
+
+    iface_cap = 32;
+    g_ctx.iface = calloc(iface_cap, sizeof(*g_ctx.iface));
+    if (!g_ctx.iface) {
+        fprintf(stderr, "%s: calloc(): %s.\n", argv[0], strerror(errno));
+        goto free_mem;
+    }
+
     hname_cnt = iface_cnt = 0;
-    memset(g_ctx.hostname, 0, sizeof(g_ctx.hostname));
-    memset(g_ctx.iface, 0, sizeof(g_ctx.iface));
-    exitcode = EXIT_FAILURE;
 
     while ((opt = getopt(argc, argv, "0146ab:dfgh:i:km:n:r:st:w:x:y:z")) !=
            -1) {
@@ -136,7 +149,7 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "%s: path of payload file is too long.\n",
                             argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 break;
 
@@ -154,25 +167,31 @@ int main(int argc, char *argv[])
 
             case 'h':
                 hname_cnt++;
-                if (hname_cnt >
-                    sizeof(g_ctx.hostname) / sizeof(*g_ctx.hostname)) {
-                    fprintf(stderr, "%s: too many hostnames specified.\n",
-                            argv[0]);
-                    print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                if (hname_cnt >= hname_cap - 1) {
+                    g_ctx.hostname = realloc(
+                        g_ctx.hostname,
+                        2 * hname_cap * sizeof(*g_ctx.hostname));
+                    if (!g_ctx.hostname) {
+                        fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
+                                strerror(errno));
+                        goto free_mem;
+                    }
+                    memset(&g_ctx.hostname[hname_cap], 0,
+                           hname_cap * sizeof(*g_ctx.hostname));
+                    hname_cap *= 2;
                 }
 
                 if (!optarg[0]) {
                     fprintf(stderr, "%s: hostname cannot be empty.\n",
                             argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
 
                 if (strlen(optarg) > _POSIX_HOST_NAME_MAX) {
                     fprintf(stderr, "%s: hostname is too long.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
 
                 g_ctx.hostname[hname_cnt - 1] = optarg;
@@ -180,25 +199,31 @@ int main(int argc, char *argv[])
 
             case 'i':
                 iface_cnt++;
-                if (iface_cnt > sizeof(g_ctx.iface) / sizeof(*g_ctx.iface)) {
-                    fprintf(stderr, "%s: too many interfaces specified.\n",
-                            argv[0]);
-                    print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                if (iface_cnt >= iface_cap - 1) {
+                    g_ctx.iface = realloc(
+                        g_ctx.iface, 2 * iface_cap * sizeof(*g_ctx.iface));
+                    if (!g_ctx.iface) {
+                        fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
+                                strerror(errno));
+                        goto free_mem;
+                    }
+                    memset(&g_ctx.iface[iface_cap], 0,
+                           iface_cap * sizeof(*g_ctx.iface));
+                    iface_cap *= 2;
                 }
 
                 if (!optarg[0]) {
                     fprintf(stderr, "%s: interface name cannot be empty.\n",
                             argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
 
                 if (strlen(optarg) > IFNAMSIZ - 1) {
                     fprintf(stderr, "%s: interface name is too long.\n",
                             argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
 
                 g_ctx.iface[iface_cnt - 1] = optarg;
@@ -213,7 +238,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp > UINT32_MAX) {
                     fprintf(stderr, "%s: invalid value for -m.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.fwmark = tmp;
                 break;
@@ -223,7 +248,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp > UINT32_MAX) {
                     fprintf(stderr, "%s: invalid value for -n.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.nfqnum = tmp;
                 break;
@@ -233,7 +258,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp > 10) {
                     fprintf(stderr, "%s: invalid value for -r.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.repeat = tmp;
                 break;
@@ -247,7 +272,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp > UINT8_MAX) {
                     fprintf(stderr, "%s: invalid value for -t.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.ttl = tmp;
                 break;
@@ -258,7 +283,7 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "%s: path of log file is too long.\n",
                             argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 break;
 
@@ -267,7 +292,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp > UINT32_MAX) {
                     fprintf(stderr, "%s: invalid value for -x.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.fwmask = tmp;
                 break;
@@ -277,7 +302,7 @@ int main(int argc, char *argv[])
                 if (!tmp || tmp >= 100) {
                     fprintf(stderr, "%s: invalid value for -y.\n", argv[0]);
                     print_usage(argv[0]);
-                    return EXIT_FAILURE;
+                    goto free_mem;
                 }
                 g_ctx.dynamic_pct = tmp;
                 break;
@@ -288,7 +313,7 @@ int main(int argc, char *argv[])
 
             default:
                 print_usage(argv[0]);
-                return EXIT_FAILURE;
+                goto free_mem;
         }
     }
 
@@ -296,7 +321,7 @@ int main(int argc, char *argv[])
         res = fh_logger_setup();
         if (res < 0) {
             EE(T(fh_logger_setup));
-            return EXIT_FAILURE;
+            goto free_mem;
         }
         res = fh_kill_running(SIGTERM);
         fh_logger_cleanup();
@@ -317,25 +342,25 @@ int main(int argc, char *argv[])
     } else if ((g_ctx.fwmark & g_ctx.fwmask) != g_ctx.fwmark) {
         fprintf(stderr, "%s: invalid value for -m/-x.\n", argv[0]);
         print_usage(argv[0]);
-        return EXIT_FAILURE;
+        goto free_mem;
     }
 
     if (!g_ctx.payloadpath && !hname_cnt) {
         fprintf(stderr, "%s: option -h is required.\n", argv[0]);
         print_usage(argv[0]);
-        return EXIT_FAILURE;
+        goto free_mem;
     }
 
     if (!g_ctx.alliface && !iface_cnt) {
         fprintf(stderr, "%s: option -i is required.\n", argv[0]);
         print_usage(argv[0]);
-        return EXIT_FAILURE;
+        goto free_mem;
     }
 
     if (g_ctx.dynamic_pct && g_ctx.nohopest) {
         fprintf(stderr, "%s: option -y cannot be used with -g.\n", argv[0]);
         print_usage(argv[0]);
-        return EXIT_FAILURE;
+        goto free_mem;
     }
 
     if (g_ctx.daemon) {
@@ -343,7 +368,7 @@ int main(int argc, char *argv[])
         if (res < 0) {
             fprintf(stderr, "%s: failed to daemonize: %s\n", argv[0],
                     strerror(errno));
-            return EXIT_FAILURE;
+            goto free_mem;
         }
 
         if (g_ctx.logfp == stderr) {
@@ -356,7 +381,7 @@ int main(int argc, char *argv[])
     res = fh_logger_setup();
     if (res < 0) {
         EE(T(fh_logger_setup));
-        return EXIT_FAILURE;
+        goto free_mem;
     }
 
     E("FakeHTTP version " VERSION);
@@ -446,6 +471,15 @@ cleanup_rawsend:
 
 cleanup_logger:
     fh_logger_cleanup();
+
+free_mem:
+    if (g_ctx.hostname) {
+        free(g_ctx.hostname);
+    }
+
+    if (g_ctx.iface) {
+        free(g_ctx.iface);
+    }
 
     return exitcode;
 }

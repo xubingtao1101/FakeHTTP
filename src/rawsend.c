@@ -80,8 +80,6 @@ invalid:
 
 static int setup_http_buff(int rotate)
 {
-    static const size_t maxcnt = sizeof(g_ctx.hostname) /
-                                 sizeof(*g_ctx.hostname);
     static const char *http_fmt = "GET / HTTP/1.1\r\n"
                                   "Host: %s\r\n"
                                   "Accept: */*\r\n"
@@ -101,7 +99,7 @@ static int setup_http_buff(int rotate)
 
         if (rotate) {
             i++;
-            if (i == maxcnt || !g_ctx.hostname[i]) {
+            if (!g_ctx.hostname[i]) {
                 i = 0;
             }
         }

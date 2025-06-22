@@ -31,7 +31,7 @@
 static int ipt4_iface_setup(void)
 {
     char iface_str[IFNAMSIZ];
-    size_t i, cnt;
+    size_t i;
     int res;
     char *ipt_alliface_cmd[] = {"iptables", "-w", "-t",         "mangle", "-A",
                                 "FAKEHTTP", "-j", "FAKEHTTP_R", NULL};
@@ -49,9 +49,7 @@ static int ipt4_iface_setup(void)
         return 0;
     }
 
-    cnt = sizeof(g_ctx.iface) / sizeof(*g_ctx.iface);
-
-    for (i = 0; i < cnt && g_ctx.iface[i]; i++) {
+    for (i = 0; g_ctx.iface[i]; i++) {
         res = snprintf(iface_str, sizeof(iface_str), "%s", g_ctx.iface[i]);
         if (res < 0 || (size_t) res >= sizeof(iface_str)) {
             E("ERROR: snprintf(): %s", "failure");
