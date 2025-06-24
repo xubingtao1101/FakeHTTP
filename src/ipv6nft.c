@@ -41,12 +41,24 @@ static int nft6_iface_setup(void)
             E("ERROR: snprintf(): %s", "failure");
             return -1;
         }
-
         res = fh_execute_command(nft_iface_cmd, 0, NULL);
         if (res < 0) {
             E(T(fh_execute_command));
             return -1;
         }
+
+        res = snprintf(nftstr, sizeof(nftstr),
+                       "add rule ip6 fakehttp fh_postrouting jump fh_rules");
+        if (res < 0 || (size_t) res >= sizeof(nftstr)) {
+            E("ERROR: snprintf(): %s", "failure");
+            return -1;
+        }
+        res = fh_execute_command(nft_iface_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+
         return 0;
     }
 
@@ -59,7 +71,20 @@ static int nft6_iface_setup(void)
             E("ERROR: snprintf(): %s", "failure");
             return -1;
         }
+        res = fh_execute_command(nft_iface_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
 
+        res = snprintf(nftstr, sizeof(nftstr),
+                       "add rule ip6 fakehttp fh_postrouting oifname \"%s\" "
+                       "jump fh_rules",
+                       g_ctx.iface[i]);
+        if (res < 0 || (size_t) res >= sizeof(nftstr)) {
+            E("ERROR: snprintf(): %s", "failure");
+            return -1;
+        }
         res = fh_execute_command(nft_iface_cmd, 0, NULL);
         if (res < 0) {
             E(T(fh_execute_command));
@@ -72,7 +97,6 @@ static int nft6_iface_setup(void)
 
 int fh_nft6_setup(void)
 {
-    size_t i, nft_opt_cmds_cnt;
     int res;
     char *nft_cmd[] = {"nft", "-f", "-", NULL};
     char nft_conf_buff[2048];
@@ -81,23 +105,8 @@ int fh_nft6_setup(void)
         "    chain fh_prerouting {\n"
         "        type filter hook prerouting priority mangle - 5;\n"
         "        policy accept;\n"
-        "    }\n"
-        "\n"
-        "    chain fh_rules {\n"
-
         /*
-            exclude marked packets
-        */
-        "        meta mark and %" PRIu32 " == %" PRIu32
-        " ct mark set ct mark and %" PRIu32 " xor %" PRIu32 ";\n"
-
-        "        ct mark and %" PRIu32 " == %" PRIu32
-        " meta mark set mark and %" PRIu32 " xor %" PRIu32 ";\n"
-
-        "        meta mark and %" PRIu32 " == %" PRIu32 " return;\n"
-
-        /*
-            exclude special IPv6 addresses
+            exclude special IPv6 addresses (from source)
         */
         "        ip6 saddr ::/127         return;\n"
         "        ip6 saddr ::ffff:0:0/96  return;\n"
@@ -106,41 +115,51 @@ int fh_nft6_setup(void)
         "        ip6 saddr 2002::/16      return;\n"
         "        ip6 saddr fc00::/7       return;\n"
         "        ip6 saddr fe80::/10      return;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_postrouting {\n"
+        "        type filter hook postrouting priority srcnat + 5;\n"
+        "        policy accept;\n"
+        /*
+            exclude special IPv6 addresses (to destination)
+        */
+        "        ip6 daddr ::/127         return;\n"
+        "        ip6 daddr ::ffff:0:0/96  return;\n"
+        "        ip6 daddr 64:ff9b::/96   return;\n"
+        "        ip6 daddr 64:ff9b:1::/48 return;\n"
+        "        ip6 daddr 2002::/16      return;\n"
+        "        ip6 daddr fc00::/7       return;\n"
+        "        ip6 daddr fe80::/10      return;\n"
+        "    }\n"
+        "\n"
+        "    chain fh_rules {\n"
+
+        /*
+            exclude marked packets
+        */
+        "        meta mark and %" PRIu32 " == %" PRIu32 " return;\n"
 
         /*
             send to nfqueue
         */
-        "        tcp flags & (fin | rst | ack) == ack queue num %" PRIu32
+        "        tcp flags & (syn | fin | rst) == syn queue num %" PRIu32
         " bypass;\n"
 
         "    }\n"
         "}\n";
 
-    char *nft_opt_cmds[][32] = {
-        /*
-            exclude packets from connections with more than 32 packets
-        */
-        {"nft", "insert rule ip6 fakehttp fh_rules ct packets > 32 return",
-         NULL},
+    char *nft_conf_opt_fmt =
+        "add rule ip6 fakehttp fh_rules tcp flags & (syn | ack | fin | rst) "
+        "== ack ct packets 2-4 queue num %" PRIu32 " bypass;\n";
 
-        /*
-            exclude big packets
-        */
-        {"nft", "insert rule ip6 fakehttp fh_rules meta length > 120 return",
-         NULL}};
-
-    nft_opt_cmds_cnt = sizeof(nft_opt_cmds) / sizeof(*nft_opt_cmds);
+    fh_nft6_cleanup();
 
     res = snprintf(nft_conf_buff, sizeof(nft_conf_buff), nft_conf_fmt,
-                   g_ctx.fwmask, g_ctx.fwmark, ~g_ctx.fwmask, g_ctx.fwmark,
-                   g_ctx.fwmask, g_ctx.fwmark, ~g_ctx.fwmask, g_ctx.fwmark,
                    g_ctx.fwmask, g_ctx.fwmark, g_ctx.nfqnum);
     if (res < 0 || (size_t) res >= sizeof(nft_conf_buff)) {
         E("ERROR: snprintf(): %s", "failure");
         return -1;
     }
-
-    fh_nft6_cleanup();
 
     res = fh_execute_command(nft_cmd, 0, nft_conf_buff);
     if (res < 0) {
@@ -148,9 +167,18 @@ int fh_nft6_setup(void)
         return -1;
     }
 
-    for (i = 0; i < nft_opt_cmds_cnt; i++) {
-        fh_execute_command(nft_opt_cmds[i], 1, NULL);
+    /*
+        Also enqueue some of the early ACK packets to ensure the packet order.
+        This rule is optional. We do not verify its execution result.
+    */
+    res = snprintf(nft_conf_buff, sizeof(nft_conf_buff), nft_conf_opt_fmt,
+                   g_ctx.nfqnum);
+    if (res < 0 || (size_t) res >= sizeof(nft_conf_buff)) {
+        E("ERROR: snprintf(): %s", "failure");
+        return -1;
     }
+
+    fh_execute_command(nft_cmd, 0, nft_conf_buff);
 
     res = nft6_iface_setup();
     if (res < 0) {

@@ -1,5 +1,5 @@
 /*
- * rawsend.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
+ * srcinfo.h - FakeHTTP: https://github.com/MikeWang000000/FakeHTTP
  *
  * Copyright (C) 2025  MikeWang000000
  *
@@ -17,17 +17,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef FH_RAWSEND_H
-#define FH_RAWSEND_H
+#ifndef FH_SRCINFO_H
+#define FH_SRCINFO_H
 
 #include <stdint.h>
-#include <linux/if_packet.h>
+#include <sys/socket.h>
 
-int fh_rawsend_setup(void);
+int fh_srcinfo_setup(void);
 
-void fh_rawsend_cleanup(void);
+void fh_srcinfo_cleanup(void);
 
-int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
-                      int *modified);
+int fh_srcinfo_put(struct sockaddr *addr, uint8_t ttl, uint8_t hwaddr[8]);
 
-#endif /* FH_RAWSEND_H */
+int fh_srcinfo_get(struct sockaddr *addr, uint8_t *ttl, uint8_t hwaddr[8]);
+
+#endif /* FH_SRCINFO_H */

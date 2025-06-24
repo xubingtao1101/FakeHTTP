@@ -33,15 +33,29 @@ static int ipt4_iface_setup(void)
     char iface_str[IFNAMSIZ];
     size_t i;
     int res;
-    char *ipt_alliface_cmd[] = {"iptables", "-w", "-t",         "mangle", "-A",
-                                "FAKEHTTP", "-j", "FAKEHTTP_R", NULL};
+    char *ipt_alliface_src_cmd[] = {"iptables", "-w",         "-t",
+                                    "mangle",   "-A",         "FAKEHTTP_S",
+                                    "-j",       "FAKEHTTP_R", NULL};
 
-    char *ipt_iface_cmd[] = {"iptables", "-w",         "-t", "mangle",
-                             "-A",       "FAKEHTTP",   "-i", iface_str,
-                             "-j",       "FAKEHTTP_R", NULL};
+    char *ipt_alliface_dst_cmd[] = {"iptables", "-w",         "-t",
+                                    "mangle",   "-A",         "FAKEHTTP_D",
+                                    "-j",       "FAKEHTTP_R", NULL};
+
+    char *ipt_iface_src_cmd[] = {"iptables", "-w",         "-t", "mangle",
+                                 "-A",       "FAKEHTTP_S", "-i", iface_str,
+                                 "-j",       "FAKEHTTP_R", NULL};
+
+    char *ipt_iface_dst_cmd[] = {"iptables", "-w",         "-t", "mangle",
+                                 "-A",       "FAKEHTTP_D", "-o", iface_str,
+                                 "-j",       "FAKEHTTP_R", NULL};
 
     if (g_ctx.alliface) {
-        res = fh_execute_command(ipt_alliface_cmd, 0, NULL);
+        res = fh_execute_command(ipt_alliface_src_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+        res = fh_execute_command(ipt_alliface_dst_cmd, 0, NULL);
         if (res < 0) {
             E(T(fh_execute_command));
             return -1;
@@ -56,7 +70,13 @@ static int ipt4_iface_setup(void)
             return -1;
         }
 
-        res = fh_execute_command(ipt_iface_cmd, 0, NULL);
+        res = fh_execute_command(ipt_iface_src_cmd, 0, NULL);
+        if (res < 0) {
+            E(T(fh_execute_command));
+            return -1;
+        }
+
+        res = fh_execute_command(ipt_iface_dst_cmd, 0, NULL);
         if (res < 0) {
             E(T(fh_execute_command));
             return -1;
@@ -72,74 +92,105 @@ int fh_ipt4_setup(void)
     size_t i, ipt_cmds_cnt, ipt_opt_cmds_cnt;
     int res;
     char *ipt_cmds[][32] = {
-        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP", NULL},
+        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP_S", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP_D", NULL},
 
         {"iptables", "-w", "-t", "mangle", "-I", "PREROUTING", "-j",
-         "FAKEHTTP", NULL},
+         "FAKEHTTP_S", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-I", "POSTROUTING", "-j",
+         "FAKEHTTP_D", NULL},
 
         {"iptables", "-w", "-t", "mangle", "-N", "FAKEHTTP_R", NULL},
 
         /*
+            exclude local IPs (from source)
+        */
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "0.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "10.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "100.64.0.0/10", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "127.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "169.254.0.0/16", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "172.16.0.0/12", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "192.168.0.0/16", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_S", "-s",
+         "224.0.0.0/3", "-j", "RETURN", NULL},
+
+        /*
+            exclude local IPs (to destination)
+        */
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "0.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "10.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "100.64.0.0/10", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "127.0.0.0/8", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "169.254.0.0/16", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "172.16.0.0/12", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "192.168.0.0/16", "-j", "RETURN", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_D", "-d",
+         "224.0.0.0/3", "-j", "RETURN", NULL},
+
+        /*
             exclude marked packets
         */
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-m", "mark",
-         "--mark", xmark_str, "-j", "CONNMARK", "--set-xmark", xmark_str,
-         NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-m",
-         "connmark", "--mark", xmark_str, "-j", "MARK", "--set-xmark",
-         xmark_str, NULL},
 
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-m", "mark",
          "--mark", xmark_str, "-j", "RETURN", NULL},
 
         /*
-            exclude local IPs
-        */
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "0.0.0.0/8", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "10.0.0.0/8", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "100.64.0.0/10", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "127.0.0.0/8", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "169.254.0.0/16", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "172.16.0.0/12", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "192.168.0.0/16", "-j", "RETURN", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-s",
-         "224.0.0.0/3", "-j", "RETURN", NULL},
-
-        /*
             send to nfqueue
         */
         {"iptables", "-w", "-t", "mangle", "-A", "FAKEHTTP_R", "-p", "tcp",
-         "--tcp-flags", "ACK,FIN,RST", "ACK", "-j", "NFQUEUE",
+         "--tcp-flags", "SYN,FIN,RST", "SYN", "-j", "NFQUEUE",
          "--queue-bypass", "--queue-num", nfqnum_str, NULL}};
 
     char *ipt_opt_cmds[][32] = {
         /*
-            exclude packets from connections with more than 32 packets
+            Also enqueue some of the early ACK packets to ensure the packet
+            order. This rule is optional. We do not verify its execution
+            result.
         */
-        {"iptables", "-w", "-t", "mangle", "-I", "FAKEHTTP_R", "-m",
-         "connbytes", "!", "--connbytes", "0:32", "--connbytes-dir", "both",
-         "--connbytes-mode", "packets", "-j", "RETURN", NULL},
-
-        /*
-            exclude big packets
-        */
-        {"iptables", "-w", "-t", "mangle", "-I", "FAKEHTTP_R", "-m", "length",
-         "!", "--length", "0:120", "-j", "RETURN", NULL}};
+        {"iptables",    "-w",
+         "-t",          "mangle",
+         "-A",          "FAKEHTTP_R",
+         "-p",          "tcp",
+         "--tcp-flags", "SYN,ACK,FIN,RST",
+         "ACK",         "-m",
+         "connbytes",   "--connbytes",
+         "2:4",         "--connbytes-dir",
+         "both",        "--connbytes-mode",
+         "packets",     "-j",
+         "NFQUEUE",     "--queue-bypass",
+         "--queue-num", nfqnum_str,
+         NULL}};
 
     ipt_cmds_cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
     ipt_opt_cmds_cnt = sizeof(ipt_opt_cmds) / sizeof(*ipt_opt_cmds);
@@ -187,26 +238,21 @@ void fh_ipt4_cleanup(void)
     char *ipt_cmds[][32] = {
         {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP_R", NULL},
 
-        {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP", NULL},
+        {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP_S", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-F", "FAKEHTTP_D", NULL},
 
         {"iptables", "-w", "-t", "mangle", "-D", "PREROUTING", "-j",
-         "FAKEHTTP", NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-D", "INPUT", "-j", "FAKEHTTP",
-         NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-D", "FORWARD", "-j", "FAKEHTTP",
-         NULL},
-
-        {"iptables", "-w", "-t", "mangle", "-D", "OUTPUT", "-j", "FAKEHTTP",
-         NULL},
+         "FAKEHTTP_S", NULL},
 
         {"iptables", "-w", "-t", "mangle", "-D", "POSTROUTING", "-j",
-         "FAKEHTTP", NULL},
+         "FAKEHTTP_D", NULL},
 
         {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP_R", NULL},
 
-        {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP", NULL}};
+        {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP_S", NULL},
+
+        {"iptables", "-w", "-t", "mangle", "-X", "FAKEHTTP_D", NULL}};
 
     cnt = sizeof(ipt_cmds) / sizeof(*ipt_cmds);
     for (i = 0; i < cnt; i++) {

@@ -40,6 +40,7 @@
 #include "process.h"
 #include "rawsend.h"
 #include "signals.h"
+#include "srcinfo.h"
 
 #ifndef PROGNAME
 #define PROGNAME "fakehttp"
@@ -392,10 +393,16 @@ int main(int argc, char *argv[])
         goto cleanup_logger;
     }
 
+    res = fh_srcinfo_setup();
+    if (res < 0) {
+        EE(T(fh_srcinfo_setup));
+        goto cleanup_payload;
+    }
+
     res = fh_rawsend_setup();
     if (res < 0) {
         EE(T(fh_rawsend_setup));
-        goto cleanup_payload;
+        goto cleanup_srcinfo;
     }
 
     res = fh_nfq_setup();
@@ -468,6 +475,9 @@ cleanup_nfq:
 
 cleanup_rawsend:
     fh_rawsend_cleanup();
+
+cleanup_srcinfo:
+    fh_srcinfo_cleanup();
 
 cleanup_payload:
     fh_payload_cleanup();

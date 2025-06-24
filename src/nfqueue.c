@@ -46,8 +46,8 @@ static struct nfq_q_handle *qh = NULL;
 static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
                     struct nfq_data *nfa, void *data)
 {
-    uint32_t pkt_id, ifindex;
-    int res, pkt_len;
+    uint32_t pkt_id, iifindex, oifindex;
+    int verdict, pkt_len, modified;
     struct nfqnl_msg_packet_hdr *ph;
     unsigned char *pkt_data;
     struct nfqnl_msg_packet_hw *hwph;
@@ -64,11 +64,8 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     pkt_id = ntohl(ph->packet_id);
 
-    ifindex = nfq_get_indev(nfa);
-    if (!ifindex) {
-        EE("ERROR: nfq_get_indev(): %s", "failure");
-        goto ret_accept;
-    }
+    iifindex = nfq_get_indev(nfa);
+    oifindex = nfq_get_outdev(nfa);
 
     pkt_data = NULL;
     pkt_len = nfq_get_payload(nfa, &pkt_data);
@@ -80,9 +77,18 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     memset(&sll, 0, sizeof(sll));
     sll.sll_family = AF_PACKET;
     sll.sll_protocol = ph->hw_protocol;
-    sll.sll_ifindex = ifindex;
+    if (oifindex) {
+        sll.sll_pkttype = PACKET_OUTGOING;
+        sll.sll_ifindex = oifindex;
+    } else if (iifindex) {
+        sll.sll_pkttype = PACKET_HOST;
+        sll.sll_ifindex = iifindex;
+    } else {
+        EE("ERROR: Failed to get interface index");
+        goto ret_accept;
+    }
 
-    /* hwph can be null on PPP interfaces */
+    /* hwph can be null on PPP interfaces or POSTROUTING packets */
     hwph = nfq_get_packet_hw(nfa);
     if (hwph) {
         sll.sll_halen = sizeof(hwph->hw_addr);
@@ -92,14 +98,17 @@ static int callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
         memset(sll.sll_addr, 0, sizeof(sll.sll_addr));
     }
 
-    res = fh_rawsend_handle(&sll, pkt_data, pkt_len);
-    if (res < 0) {
+    verdict = fh_rawsend_handle(&sll, pkt_data, pkt_len, &modified);
+    if (verdict < 0) {
         EE(T(fh_rawsend_handle));
         goto ret_accept;
-    } else if (res) {
-        goto ret_accept;
     }
-    return nfq_set_verdict2(qh, pkt_id, NF_REPEAT, g_ctx.fwmark, 0, NULL);
+
+    if (modified && verdict != NF_DROP) {
+        return nfq_set_verdict(qh, pkt_id, verdict, pkt_len, pkt_data);
+    }
+
+    return nfq_set_verdict(qh, pkt_id, verdict, 0, NULL);
 
 ret_accept:
     return nfq_set_verdict(qh, pkt_id, NF_ACCEPT, 0, NULL);
