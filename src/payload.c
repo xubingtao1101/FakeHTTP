@@ -265,7 +265,7 @@ int fh_payload_setup(void)
                 len = sizeof(node->payload);
                 res = make_http_get(node->payload, &len, pinfo->info);
                 if (res < 0) {
-                    E(T(make_custom));
+                    E(T(make_http_get));
                     goto cleanup;
                 }
                 node->payload_len = len;
@@ -275,7 +275,7 @@ int fh_payload_setup(void)
                 len = sizeof(node->payload);
                 res = make_tls_client_hello(node->payload, &len, pinfo->info);
                 if (res < 0) {
-                    E(T(make_custom));
+                    E(T(make_tls_client_hello));
                     goto cleanup;
                 }
                 node->payload_len = len;

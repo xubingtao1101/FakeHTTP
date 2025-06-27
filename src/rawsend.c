@@ -82,7 +82,7 @@ static void ipaddr_to_str(struct sockaddr *addr, char ipstr[INET6_ADDRSTRLEN])
 
     if (addr->sa_family == AF_INET) {
         res = inet_ntop(AF_INET, &((struct sockaddr_in *) addr)->sin_addr,
-                        ipstr, INET6_ADDRSTRLEN);
+                        ipstr, INET_ADDRSTRLEN);
         if (!res) {
             goto invalid;
         }
@@ -295,7 +295,7 @@ int fh_rawsend_setup(void)
     opt = 128;
     res = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt));
     if (res < 0) {
-        E("ERROR: setsockopt(): SO_PRIORITY: %s", strerror(errno));
+        E("ERROR: setsockopt(): SO_RCVBUF: %s", strerror(errno));
         goto close_socket;
     }
 
