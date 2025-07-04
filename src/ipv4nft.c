@@ -98,7 +98,7 @@ static int nft4_iface_setup(void)
 int fh_nft4_setup(void)
 {
     int res;
-    char *nft_cmd[] = {"nft", "-f", "-", NULL};
+    char *nft_cmd[] = {"nft", "-i", NULL};
     char nft_conf_buff[2048];
     char *nft_conf_fmt =
         "table ip fakehttp {\n"
