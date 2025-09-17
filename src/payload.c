@@ -105,6 +105,122 @@ static const struct tls_client_hello {
 
 static struct payload_node *current_node;
 
+/*
+    Generate a new payload on each call.
+    - buffer: output buffer to write payload bytes
+    - len: in/out. On input, size of buffer; on output, number of bytes written
+    Return 0 on success, <0 on failure.
+*/
+static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
+{
+    size_t left, used, wrote;
+    int include_origin, include_referer;
+    unsigned int a, b, c, d, port;
+    unsigned int r_high, r_low;
+    char hostline[160];
+    char originline[200];
+    char refererline[240];
+
+    left = *len;
+    used = 0;
+
+    /* Random parts */
+    a = 20 + (rand() % 80);          /* 20..99 */
+    b = 1 + (rand() % 254);          /* 1..254 */
+    c = 1 + (rand() % 254);          /* 1..254 */
+    d = 1 + (rand() % 254);          /* 1..254 */
+    port = 10000 + (rand() % 50000); /* 10000..59999 */
+
+    /* r parameter: 0.xxxxxxxxxxxxxxxx with 16 random digits */
+    r_high = (unsigned int) rand();
+    r_low = (unsigned int) rand();
+
+    include_origin = rand() & 1;
+    include_referer = rand() & 1;
+
+    /* Build Host, Origin, Referer lines into temp buffers */
+    snprintf(hostline, sizeof(hostline),
+             "Host: node-%u-%u-%u-%u.speedtest.cn:%u\r\n", a, b, c, d, port);
+
+    if (include_origin) {
+        /* Randomly choose http/https and a path */
+        const char *scheme = (rand() & 1) ? "https" : "http";
+        unsigned int pathpick = rand() % 3; /* 0:/, 1:/speed, 2:/test */
+        const char *paths[3] = {"/", "/speed", "/test/"};
+        snprintf(originline, sizeof(originline),
+                 "origin: %s://www.speedtest.cn\r\n", scheme);
+        snprintf(refererline, sizeof(refererline),
+                 "referer: %s://www.speedtest.cn%s\r\n", scheme,
+                 paths[pathpick]);
+    } else {
+        originline[0] = '\0';
+        snprintf(refererline, sizeof(refererline),
+                 "referer: https://www.speedtest.cn/\r\n");
+    }
+
+    if (!include_referer) {
+        refererline[0] = '\0';
+    }
+
+    /* Start composing into buffer */
+    wrote = snprintf((char *) buffer + used, left,
+                     "OPTIONS /upload?r=0.%08u%08u HTTP/2\r\n",
+                     r_high, r_low);
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    wrote = snprintf((char *) buffer + used, left, "%s", hostline);
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    /* Always include these headers */
+    wrote = snprintf((char *) buffer + used, left,
+                     "accept: */*\r\n");
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    /* Slightly randomize accept-language weight */
+    {
+        int q = 8 + (rand() % 3); /* 0.8..1.0 step 0.1 approx */
+        wrote = snprintf((char *) buffer + used, left,
+                         "accept-language: zh-CN,zh;q=0.%d,en;q=0.8\r\n", q);
+        if (wrote >= left) return -1; used += wrote; left -= wrote;
+    }
+
+    wrote = snprintf((char *) buffer + used, left,
+                     "access-control-request-headers: content-type\r\n");
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    wrote = snprintf((char *) buffer + used, left,
+                     "access-control-request-method: POST\r\n");
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    wrote = snprintf((char *) buffer + used, left,
+                     "cache-control: no-cache\r\n");
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    /* Optionally include origin and referer */
+    if (originline[0]) {
+        wrote = snprintf((char *) buffer + used, left, "%s", originline);
+        if (wrote >= left) return -1; used += wrote; left -= wrote;
+    }
+    if (refererline[0]) {
+        wrote = snprintf((char *) buffer + used, left, "%s", refererline);
+        if (wrote >= left) return -1; used += wrote; left -= wrote;
+    }
+
+    /* Keep user-agent similar to example */
+    wrote = snprintf((char *) buffer + used, left,
+                     "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%d.0.0.0 Safari/537.36\r\n",
+                     120 + (rand() % 25)); /* Chrome/120..144 */
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    /* End of headers */
+    wrote = snprintf((char *) buffer + used, left, "\r\n");
+    if (wrote >= left) return -1; used += wrote; left -= wrote;
+
+    *len = used;
+    return 0;
+}
+
 static int make_http_get(uint8_t *buffer, size_t *len, char *hostname)
 {
     int len_, buffsize;
@@ -321,7 +437,16 @@ void fh_payload_cleanup(void)
 
 void th_payload_get(uint8_t **payload_ptr, size_t *payload_len)
 {
-    *payload_ptr = current_node->payload;
-    *payload_len = current_node->payload_len;
-    current_node = current_node->next;
+    static uint8_t buffer[BUFFLEN];
+    size_t len = sizeof(buffer);
+    int res = fh_generate_new_payload(buffer, &len);
+
+    if (res < 0) {
+        *payload_ptr = NULL;
+        *payload_len = 0;
+        return;
+    }
+
+    *payload_ptr = buffer;
+    *payload_len = len;
 }
