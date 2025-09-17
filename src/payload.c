@@ -166,44 +166,80 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     wrote = snprintf((char *) buffer + used, left,
                      "OPTIONS /upload?r=0.%08u%08u HTTP/2\r\n",
                      r_high, r_low);
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     wrote = snprintf((char *) buffer + used, left, "%s", hostline);
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     /* Always include these headers */
     wrote = snprintf((char *) buffer + used, left,
                      "accept: */*\r\n");
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     /* Slightly randomize accept-language weight */
     {
         int q = 8 + (rand() % 3); /* 0.8..1.0 step 0.1 approx */
         wrote = snprintf((char *) buffer + used, left,
                          "accept-language: zh-CN,zh;q=0.%d,en;q=0.8\r\n", q);
-        if (wrote >= left) return -1; used += wrote; left -= wrote;
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
     }
 
     wrote = snprintf((char *) buffer + used, left,
                      "access-control-request-headers: content-type\r\n");
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     wrote = snprintf((char *) buffer + used, left,
                      "access-control-request-method: POST\r\n");
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     wrote = snprintf((char *) buffer + used, left,
                      "cache-control: no-cache\r\n");
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     /* Optionally include origin and referer */
     if (originline[0]) {
         wrote = snprintf((char *) buffer + used, left, "%s", originline);
-        if (wrote >= left) return -1; used += wrote; left -= wrote;
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
     }
     if (refererline[0]) {
         wrote = snprintf((char *) buffer + used, left, "%s", refererline);
-        if (wrote >= left) return -1; used += wrote; left -= wrote;
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
     }
 
     /* Keep user-agent similar to example */
@@ -211,11 +247,19 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
                      "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%d.0.0.0 Safari/537.36\r\n",
                      120 + (rand() % 25)); /* Chrome/120..144 */
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     /* End of headers */
     wrote = snprintf((char *) buffer + used, left, "\r\n");
-    if (wrote >= left) return -1; used += wrote; left -= wrote;
+    if (wrote >= left) {
+        return -1;
+    }
+    used += wrote;
+    left -= wrote;
 
     *len = used;
     return 0;
