@@ -122,6 +122,7 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     char refererline[240];
     const char *methods[] = {"GET", "POST", "OPTIONS", "PUT"};
     const char *method = methods[rand() % 4];
+    char ualine[256];
 
     left = *len;
     used = 0;
@@ -244,11 +245,67 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
         left -= wrote;
     }
 
-    /* Keep user-agent similar to example */
-    wrote = snprintf((char *) buffer + used, left,
-                     "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%d.0.0.0 Safari/537.36\r\n",
-                     120 + (rand() % 25)); /* Chrome/120..144 */
+    /* Generate randomized User-Agent */
+    {
+        enum { UA_WIN, UA_MAC, UA_LINUX } platform = (rand() % 3);
+        enum { ENG_WEBKIT, ENG_GECKO, ENG_TRIDENT } engine = (rand() % 3);
+        int chrome_major = 120 + (rand() % 25);   /* 120..144 */
+        int edge_major = 120 + (rand() % 25);     /* 120..144 */
+        int firefox_major = 115 + (rand() % 25);  /* 115..139 */
+
+        const char *plat_str;
+        switch (platform) {
+            case UA_WIN:
+                plat_str = "Windows NT 10.0; Win64; x64";
+                break;
+            case UA_MAC:
+                plat_str = "Macintosh; Intel Mac OS X 10_15_7";
+                break;
+            default:
+                plat_str = "X11; Linux x86_64";
+                break;
+        }
+
+        ualine[0] = '\0';
+
+        if (engine == ENG_WEBKIT) {
+            /* Chrome/Edge family on WebKit */
+            int use_edge = rand() & 1;
+            if (use_edge) {
+                snprintf(ualine, sizeof(ualine),
+                         "user-agent: Mozilla/5.0 (%s) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) "
+                         "Chrome/%d.0.0.0 Safari/537.36 Edg/%d.0.0.0\r\n",
+                         plat_str, chrome_major, edge_major);
+            } else {
+                snprintf(ualine, sizeof(ualine),
+                         "user-agent: Mozilla/5.0 (%s) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) "
+                         "Chrome/%d.0.0.0 Safari/537.36\r\n",
+                         plat_str, chrome_major);
+            }
+        } else if (engine == ENG_GECKO) {
+            /* Firefox family on Gecko */
+            snprintf(ualine, sizeof(ualine),
+                     "user-agent: Mozilla/5.0 (%s; rv:%d.0) "
+                     "Gecko/20100101 Firefox/%d.0\r\n",
+                     plat_str, firefox_major, firefox_major);
+        } else {
+            /* Trident (IE 11 style) */
+            /* Force Windows platform for realistic UA */
+            plat_str = "Windows NT 10.0; Trident/7.0; rv:11.0";
+            snprintf(ualine, sizeof(ualine),
+                     "user-agent: Mozilla/5.0 (%s) like Gecko\r\n",
+                     plat_str);
+        }
+
+        wrote = snprintf((char *) buffer + used, left, "%s", ualine);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
     if (wrote >= left) {
         return -1;
     }
