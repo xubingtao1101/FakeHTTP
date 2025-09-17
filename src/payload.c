@@ -123,6 +123,7 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     const char *methods[] = {"GET", "POST", "OPTIONS", "PUT"};
     const char *method = methods[rand() % 4];
     char ualine[256];
+    static size_t host_rr_index;
 
     left = *len;
     used = 0;
@@ -142,8 +143,35 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     include_referer = rand() & 1;
 
     /* Build Host, Origin, Referer lines into temp buffers */
-    snprintf(hostline, sizeof(hostline),
-             "Host: node-%u-%u-%u-%u.speedtest.cn:%u\r\n", a, b, c, d, port);
+    /* Prefer -h provided hostnames (type FH_PAYLOAD_HTTP); fallback to random */
+    {
+        size_t i, count = 0, pick = 0;
+        /* First pass: count HTTP hosts */
+        for (i = 0; g_ctx.plinfo && g_ctx.plinfo[i].type; i++) {
+            if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP && g_ctx.plinfo[i].info) {
+                count++;
+            }
+        }
+
+        if (count > 0) {
+            /* Second pass: select (host_rr_index % count)-th HTTP host */
+            size_t target = host_rr_index % count;
+            for (i = 0; g_ctx.plinfo[i].type; i++) {
+                if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP && g_ctx.plinfo[i].info) {
+                    if (pick == target) {
+                        snprintf(hostline, sizeof(hostline),
+                                 "Host: %s\r\n", g_ctx.plinfo[i].info);
+                        break;
+                    }
+                    pick++;
+                }
+            }
+            host_rr_index++;
+        } else {
+            snprintf(hostline, sizeof(hostline),
+                     "Host: node-%u-%u-%u-%u.speedtest.cn:%u\r\n", a, b, c, d, port);
+        }
+    }
 
     if (include_origin) {
         /* Randomly choose http/https and a path */
