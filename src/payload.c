@@ -120,6 +120,8 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     char hostline[160];
     char originline[200];
     char refererline[240];
+    const char *methods[] = {"GET", "POST", "OPTIONS", "PUT"};
+    const char *method = methods[rand() % 4];
 
     left = *len;
     used = 0;
@@ -164,8 +166,8 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
 
     /* Start composing into buffer */
     wrote = snprintf((char *) buffer + used, left,
-                     "OPTIONS /upload?r=0.%08u%08u HTTP/2\r\n",
-                     r_high, r_low);
+                     "%s /upload?r=0.%08u%08u HTTP/1.1\r\n",
+                     method, r_high, r_low);
     if (wrote >= left) {
         return -1;
     }
