@@ -122,6 +122,8 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     char refererline[240];
     const char *methods[] = {"GET", "POST", "OPTIONS", "PUT"};
     const char *method = methods[rand() % 4];
+    int is_post = strcmp(method, "POST") == 0;
+    unsigned int post_len = 0;
     char ualine[256];
     static size_t host_rr_index;
 
@@ -261,6 +263,18 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     used += wrote;
     left -= wrote;
 
+    /* If POST, add Content-Length header with random body size 10..200 */
+    if (is_post) {
+        post_len = 10 + (rand() % 191);
+        wrote = snprintf((char *) buffer + used, left,
+                         "content-length: %u\r\n", post_len);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
     /* Optionally include origin and referer */
     if (originline[0]) {
         wrote = snprintf((char *) buffer + used, left, "%s", originline);
@@ -353,6 +367,21 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     }
     used += wrote;
     left -= wrote;
+
+    /* If POST, append a random body of length post_len */
+    if (is_post) {
+        static const char charset[] =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&=_-";
+        size_t i;
+        if (left < post_len) {
+            return -1;
+        }
+        for (i = 0; i < post_len; i++) {
+            buffer[used + i] = charset[rand() % (sizeof(charset) - 1)];
+        }
+        used += post_len;
+        left -= post_len;
+    }
 
     *len = used;
     return 0;
