@@ -194,9 +194,15 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     }
 
     /* Start composing into buffer */
-    wrote = snprintf((char *) buffer + used, left,
-                     "%s /upload?r=0.%08u%08u HTTP/1.1\r\n",
-                     method, r_high, r_low);
+    if (strcmp(method, "GET") == 0) {
+        wrote = snprintf((char *) buffer + used, left,
+                         "%s /download?size=25000000&r=0.%08u%08u HTTP/1.1\r\n",
+                         method, r_high, r_low);
+    } else {
+        wrote = snprintf((char *) buffer + used, left,
+                         "%s /upload?r=0.%08u%08u HTTP/1.1\r\n",
+                         method, r_high, r_low);
+    }
     if (wrote >= left) {
         return -1;
     }
