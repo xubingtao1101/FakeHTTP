@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -155,10 +156,48 @@ static int remove_tfo_cookie(uint16_t ethertype, uint8_t *pkt,
     Instead of using an AF_PACKET socket, we create a temporary AF_INET or
     AF_INET6 raw socket, so that the packet gets SNATed correctly.
 */
+/*
+    Send with retry mechanism for ENOBUFS errors.
+    Retries up to 3 times with exponential backoff.
+*/
+static ssize_t sendto_with_retry(int sock_fd, const void *buf, size_t len,
+                                  int flags, const struct sockaddr *dest_addr,
+                                  socklen_t addrlen)
+{
+    ssize_t nbytes;
+    int retries = 3;
+    struct timespec sleep_time = {0, 1000000}; /* 1ms */
+
+    while (retries > 0) {
+        nbytes = sendto(sock_fd, buf, len, flags, dest_addr, addrlen);
+        if (nbytes >= 0) {
+            return nbytes;
+        }
+
+        /* Only retry on ENOBUFS (No buffer space available) */
+        if (errno != ENOBUFS) {
+            return -1;
+        }
+
+        retries--;
+        if (retries > 0) {
+            /* Exponential backoff: 1ms, 2ms, 4ms */
+            nanosleep(&sleep_time, NULL);
+            sleep_time.tv_nsec *= 2;
+            if (sleep_time.tv_nsec >= 1000000000) {
+                sleep_time.tv_sec += 1;
+                sleep_time.tv_nsec -= 1000000000;
+            }
+        }
+    }
+
+    return -1;
+}
+
 static int sendto_snat(struct sockaddr_ll *sll, struct sockaddr *daddr,
                        uint8_t *pkt_buff, int pkt_len)
 {
-    int res, ret, sock_fd;
+    int res, ret, sock_fd, opt;
     ssize_t nbytes;
     char *iface, iface_buf[IF_NAMESIZE];
 
@@ -190,9 +229,14 @@ static int sendto_snat(struct sockaddr_ll *sll, struct sockaddr *daddr,
         goto close_socket;
     }
 
-    nbytes = sendto(sock_fd, pkt_buff, pkt_len, 0, daddr,
-                    daddr->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6)
-                                                 : sizeof(struct sockaddr_in));
+    /* Increase SO_SNDBUF for SNAT socket as well */
+    opt = 1048576; /* 1 MB */
+    setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
+
+    nbytes = sendto_with_retry(sock_fd, pkt_buff, pkt_len, 0, daddr,
+                               daddr->sa_family == AF_INET6
+                                   ? sizeof(struct sockaddr_in6)
+                                   : sizeof(struct sockaddr_in));
     if (nbytes < 0) {
         E("ERROR: sendto(): %s", strerror(errno));
         goto close_socket;
@@ -244,8 +288,8 @@ static int send_payload(struct sockaddr_ll *sll, struct sockaddr *saddr,
             return -1;
         }
     } else {
-        nbytes = sendto(sockfd, pkt_buff, pkt_len, 0, (struct sockaddr *) sll,
-                        sizeof(*sll));
+        nbytes = sendto_with_retry(sockfd, pkt_buff, pkt_len, 0,
+                                   (struct sockaddr *) sll, sizeof(*sll));
         if (nbytes < 0) {
             E("ERROR: sendto(): %s", strerror(errno));
             return -1;
@@ -296,6 +340,17 @@ int fh_rawsend_setup(void)
     res = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt));
     if (res < 0) {
         E("ERROR: setsockopt(): SO_RCVBUF: %s", strerror(errno));
+        goto close_socket;
+    }
+
+    /*
+        Increase SO_SNDBUF to reduce "No buffer space available" errors.
+        Set to 1MB to handle high packet rates.
+    */
+    opt = 1048576; /* 1 MB */
+    res = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
+    if (res < 0) {
+        E("ERROR: setsockopt(): SO_SNDBUF: %s", strerror(errno));
         goto close_socket;
     }
 
@@ -400,6 +455,11 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
                 E(T(send_payload));
                 return -1;
             }
+            /* Small delay between sends to avoid buffer overflow */
+            if (i < g_ctx.repeat - 1) {
+                struct timespec delay = {0, 1000}; /* 1 microsecond */
+                nanosleep(&delay, NULL);
+            }
         }
         E_INFO("%s:%u <===FAKE(*)=== %s:%u", src_ip_str, ntohs(tcph->source),
                dst_ip_str, ntohs(tcph->dest));
@@ -445,6 +505,11 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
                 E(T(send_payload));
                 return -1;
             }
+            /* Small delay between sends to avoid buffer overflow */
+            if (i < g_ctx.repeat - 1) {
+                struct timespec delay = {0, 1000}; /* 1 microsecond */
+                nanosleep(&delay, NULL);
+            }
         }
         E_INFO("%s:%u <===FAKE(*)=== %s:%u", dst_ip_str, ntohs(tcph->dest),
                src_ip_str, ntohs(tcph->source));
@@ -464,8 +529,8 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
                 return -1;
             }
         } else {
-            nbytes = sendto(sockfd, pkt_data, pkt_len, 0,
-                            (struct sockaddr *) sll, sizeof(*sll));
+            nbytes = sendto_with_retry(sockfd, pkt_data, pkt_len, 0,
+                                      (struct sockaddr *) sll, sizeof(*sll));
             if (nbytes < 0) {
                 E("ERROR: sendto(): %s", strerror(errno));
                 return -1;
