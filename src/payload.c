@@ -227,11 +227,81 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     used += wrote;
     left -= wrote;
 
+    /* Accept-Encoding with random compression algorithms */
+    {
+        const char *encodings[] = {
+            "gzip, deflate, br",
+            "gzip, deflate",
+            "gzip",
+            "gzip, deflate, br, zstd"
+        };
+        const char *enc = encodings[rand() % 4];
+        wrote = snprintf((char *) buffer + used, left,
+                         "accept-encoding: %s\r\n", enc);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
     /* Slightly randomize accept-language weight */
     {
         int q = 8 + (rand() % 3); /* 0.8..1.0 step 0.1 approx */
         wrote = snprintf((char *) buffer + used, left,
                          "accept-language: zh-CN,zh;q=0.%d,en;q=0.8\r\n", q);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Connection header */
+    {
+        const char *conn[] = {"keep-alive", "close", "Upgrade"};
+        const char *conn_val = conn[rand() % 3];
+        wrote = snprintf((char *) buffer + used, left,
+                         "connection: %s\r\n", conn_val);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Content-Length header for all requests with random values */
+    {
+        unsigned int content_len;
+        if (is_post) {
+            /* For POST, generate reasonable body size: 10-5000 bytes */
+            content_len = 10 + (rand() % 4991);
+            post_len = content_len;
+        } else {
+            /* For non-POST requests, generate a small random value (0-100) 
+             * to simulate edge cases or preflight requests */
+            content_len = rand() % 101;
+        }
+        wrote = snprintf((char *) buffer + used, left,
+                         "content-length: %u\r\n", content_len);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Content-Type header (randomly include for POST/PUT) */
+    if (is_post || strcmp(method, "PUT") == 0) {
+        const char *content_types[] = {
+            "application/json",
+            "application/x-www-form-urlencoded",
+            "multipart/form-data",
+            "text/plain; charset=utf-8"
+        };
+        const char *ct = content_types[rand() % 4];
+        wrote = snprintf((char *) buffer + used, left,
+                         "content-type: %s\r\n", ct);
         if (wrote >= left) {
             return -1;
         }
@@ -255,19 +325,83 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     used += wrote;
     left -= wrote;
 
-    wrote = snprintf((char *) buffer + used, left,
-                     "cache-control: no-cache\r\n");
-    if (wrote >= left) {
-        return -1;
-    }
-    used += wrote;
-    left -= wrote;
-
-    /* If POST, add Content-Length header with random body size 10..200 */
-    if (is_post) {
-        post_len = 10 + (rand() % 191);
+    /* Cache-Control with variations */
+    {
+        const char *cache_ctrl[] = {
+            "no-cache",
+            "no-store, no-cache, must-revalidate",
+            "max-age=0",
+            "private, no-cache"
+        };
+        const char *cc = cache_ctrl[rand() % 4];
         wrote = snprintf((char *) buffer + used, left,
-                         "content-length: %u\r\n", post_len);
+                         "cache-control: %s\r\n", cc);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Pragma header (randomly include) */
+    if (rand() & 1) {
+        wrote = snprintf((char *) buffer + used, left,
+                         "pragma: no-cache\r\n");
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* DNT (Do Not Track) header */
+    {
+        const char *dnt_val = (rand() & 1) ? "1" : "0";
+        wrote = snprintf((char *) buffer + used, left,
+                         "dnt: %s\r\n", dnt_val);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Upgrade-Insecure-Requests */
+    if (rand() & 1) {
+        wrote = snprintf((char *) buffer + used, left,
+                         "upgrade-insecure-requests: 1\r\n");
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* Sec-Fetch-* headers (modern browsers) */
+    if (rand() & 1) {
+        const char *sec_fetch_modes[] = {"navigate", "cors", "no-cors", "same-origin"};
+        const char *sec_fetch_sites[] = {"same-origin", "same-site", "none", "cross-site"};
+        const char *sec_fetch_dests[] = {"document", "empty", "image", "script"};
+        const char *sec_fetch_mode = sec_fetch_modes[rand() % 4];
+        const char *sec_fetch_site = sec_fetch_sites[rand() % 4];
+        const char *sec_fetch_dest = sec_fetch_dests[rand() % 4];
+
+        wrote = snprintf((char *) buffer + used, left,
+                         "sec-fetch-mode: %s\r\n"
+                         "sec-fetch-site: %s\r\n"
+                         "sec-fetch-dest: %s\r\n",
+                         sec_fetch_mode, sec_fetch_site, sec_fetch_dest);
+        if (wrote >= left) {
+            return -1;
+        }
+        used += wrote;
+        left -= wrote;
+    }
+
+    /* X-Requested-With header (randomly include) */
+    if (rand() & 1) {
+        wrote = snprintf((char *) buffer + used, left,
+                         "x-requested-with: XMLHttpRequest\r\n");
         if (wrote >= left) {
             return -1;
         }
