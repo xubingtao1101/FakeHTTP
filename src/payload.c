@@ -118,6 +118,7 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     unsigned int a, b, c, d, port;
     unsigned int r_high, r_low;
     char hostline[160];
+    char hostvalue[160];
     char originline[200];
     char refererline[240];
     const char *methods[] = {"GET", "POST", "OPTIONS", "PUT"};
@@ -148,6 +149,7 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
     /* Prefer -h provided hostnames (type FH_PAYLOAD_HTTP); fallback to random */
     {
         size_t i, count = 0, pick = 0;
+        hostvalue[0] = '\0';
         /* First pass: count HTTP hosts */
         for (i = 0; g_ctx.plinfo && g_ctx.plinfo[i].type; i++) {
             if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP && g_ctx.plinfo[i].info) {
@@ -161,8 +163,10 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
             for (i = 0; g_ctx.plinfo[i].type; i++) {
                 if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP && g_ctx.plinfo[i].info) {
                     if (pick == target) {
+                        snprintf(hostvalue, sizeof(hostvalue), "%s",
+                                 g_ctx.plinfo[i].info);
                         snprintf(hostline, sizeof(hostline),
-                                 "Host: %s\r\n", g_ctx.plinfo[i].info);
+                                 "Host: %s\r\n", hostvalue);
                         break;
                     }
                     pick++;
@@ -170,8 +174,10 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
             }
             host_rr_index++;
         } else {
+            snprintf(hostvalue, sizeof(hostvalue),
+                     "node-%u-%u-%u-%u.speedtest.cn:%u", a, b, c, d, port);
             snprintf(hostline, sizeof(hostline),
-                     "Host: node-%u-%u-%u-%u.speedtest.cn:%u\r\n", a, b, c, d, port);
+                     "Host: %s\r\n", hostvalue);
         }
     }
 
@@ -181,14 +187,14 @@ static int fh_generate_new_payload(uint8_t *buffer, size_t *len)
         unsigned int pathpick = rand() % 3; /* 0:/, 1:/speed, 2:/test */
         const char *paths[3] = {"/", "/speed", "/test/"};
         snprintf(originline, sizeof(originline),
-                 "origin: %s://www.speedtest.cn\r\n", scheme);
+                 "origin: %s://%s\r\n", scheme, hostvalue);
         snprintf(refererline, sizeof(refererline),
-                 "referer: %s://www.speedtest.cn%s\r\n", scheme,
+                 "referer: %s://%s%s\r\n", scheme, hostvalue,
                  paths[pathpick]);
     } else {
         originline[0] = '\0';
         snprintf(refererline, sizeof(refererline),
-                 "referer: https://www.speedtest.cn/\r\n");
+                 "referer: https://%s/\r\n", hostvalue);
     }
 
     if (!include_referer) {
