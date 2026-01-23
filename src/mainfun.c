@@ -63,6 +63,7 @@ static void print_usage(const char *name)
         "  -b <file>          use TCP payload from binary file\n"
         "  -e <hostname>      hostname for HTTPS obfuscation\n"
         "  -h <hostname>      hostname for HTTP obfuscation\n"
+        "  -c <hostname>      custom/random HTTP payload hostname (advanced)\n"
         "\n"
         "General Options:\n"
         "  -0                 process inbound connections\n"
@@ -125,7 +126,7 @@ int main(int argc, char *argv[])
 
     plinfo_cnt = iface_cnt = 0;
 
-    while ((opt = getopt(argc, argv, "0146ab:de:fgh:i:km:n:r:st:w:x:y:z")) !=
+    while ((opt = getopt(argc, argv, "0146ab:c:de:fgh:i:km:n:r:st:w:x:y:z")) !=
            -1) {
         switch (opt) {
             case '0':
@@ -149,6 +150,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'b':
+            case 'c':
             case 'e':
             case 'h':
                 if (!optarg[0]) {
@@ -172,11 +174,11 @@ int main(int argc, char *argv[])
                     plinfo_cap *= 2;
                 }
 
-                g_ctx.plinfo[plinfo_cnt - 1].type = opt == 'b'
-                                                        ? FH_PAYLOAD_CUSTOM
-                                                    : opt == 'e'
-                                                        ? FH_PAYLOAD_HTTPS
-                                                        : FH_PAYLOAD_HTTP;
+                g_ctx.plinfo[plinfo_cnt - 1].type =
+                    opt == 'b'   ? FH_PAYLOAD_CUSTOM
+                    : opt == 'e' ? FH_PAYLOAD_HTTPS
+                    : opt == 'h' ? FH_PAYLOAD_HTTP
+                                 : FH_PAYLOAD_HTTP_RANDOM;
                 g_ctx.plinfo[plinfo_cnt - 1].info = optarg;
                 break;
 
@@ -341,7 +343,7 @@ int main(int argc, char *argv[])
     }
 
     if (!plinfo_cnt) {
-        fprintf(stderr, "%s: option -h or -b is required.\n", argv[0]);
+        fprintf(stderr, "%s: option -h, -b or -c is required.\n", argv[0]);
         print_usage(argv[0]);
         goto free_mem;
     }
