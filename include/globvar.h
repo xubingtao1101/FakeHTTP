@@ -28,7 +28,7 @@
 struct fh_context {
     int exit;
     FILE *logfp;
-    /* -b, -c, -e, -h */ struct payload_info *plinfo;
+    /* -b, -c, -C, -e, -h, -v */ struct payload_info *plinfo;
     /* -0 */ int inbound;
     /* -1 */ int outbound;
     /* -4 */ int use_ipv4;

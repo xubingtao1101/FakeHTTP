@@ -768,6 +768,16 @@ int fh_payload_setup(void)
                 node->payload_len = len;
                 break;
 
+            case FH_PAYLOAD_TLS_CLIENT_HELLO:
+                len = sizeof(node->payload);
+                res = make_tls_client_hello(node->payload, &len, pinfo->info);
+                if (res < 0) {
+                    E(T(make_tls_client_hello));
+                    goto cleanup;
+                }
+                node->payload_len = len;
+                break;
+
             case FH_PAYLOAD_HTTP_RANDOM:
                 len = sizeof(node->payload);
                 /*

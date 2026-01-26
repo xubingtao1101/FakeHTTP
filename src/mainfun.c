@@ -64,6 +64,7 @@ static void print_usage(const char *name)
         "  -e <hostname>      hostname for HTTPS obfuscation\n"
         "  -h <hostname>      hostname for HTTP obfuscation\n"
         "  -c <hostname>      custom/random HTTP payload hostname (advanced)\n"
+        "  -C <hostname>      TLS client hello payload\n"
         "  -v                 simple random HTTP POST payload\n"
         "\n"
         "General Options:\n"
@@ -128,7 +129,7 @@ int main(int argc, char *argv[])
     plinfo_cnt = iface_cnt = 0;
 
     while ((opt = getopt(argc, argv,
-                         "0146ab:c:de:fgh:i:km:n:r:st:vw:x:y:z")) != -1) {
+                         "0146ab:c:C:de:fgh:i:km:n:r:st:vw:x:y:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -152,6 +153,7 @@ int main(int argc, char *argv[])
 
             case 'b':
             case 'c':
+            case 'C':
             case 'e':
             case 'h':
                 if (!optarg[0]) {
@@ -177,6 +179,8 @@ int main(int argc, char *argv[])
 
                 g_ctx.plinfo[plinfo_cnt - 1].type =
                     opt == 'b'   ? FH_PAYLOAD_CUSTOM
+                    : opt == 'c' ? FH_PAYLOAD_HTTP_RANDOM
+                    : opt == 'C' ? FH_PAYLOAD_TLS_CLIENT_HELLO
                     : opt == 'e' ? FH_PAYLOAD_HTTPS
                     : opt == 'h' ? FH_PAYLOAD_HTTP
                                  : FH_PAYLOAD_HTTP_RANDOM;
@@ -363,7 +367,8 @@ int main(int argc, char *argv[])
     }
 
     if (!plinfo_cnt) {
-        fprintf(stderr, "%s: option -h, -b, -c or -v is required.\n", argv[0]);
+        fprintf(stderr, "%s: option -h, -b, -c, -C or -v is required.\n",
+                argv[0]);
         print_usage(argv[0]);
         goto free_mem;
     }

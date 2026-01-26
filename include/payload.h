@@ -31,7 +31,9 @@ enum payload_type {
     /* -c: custom/random HTTP payload based on hostnames */
     FH_PAYLOAD_HTTP_RANDOM,
     /* -v: simple random HTTP POST payload */
-    FH_PAYLOAD_HTTP_SIMPLE
+    FH_PAYLOAD_HTTP_SIMPLE,
+    /* -C: TLS client hello payload */
+    FH_PAYLOAD_TLS_CLIENT_HELLO
 };
 
 struct payload_info {
