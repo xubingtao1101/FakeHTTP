@@ -64,6 +64,7 @@ static void print_usage(const char *name)
         "  -e <hostname>      hostname for HTTPS obfuscation\n"
         "  -h <hostname>      hostname for HTTP obfuscation\n"
         "  -c <hostname>      custom/random HTTP payload hostname (advanced)\n"
+        "  -v                 simple random HTTP POST payload\n"
         "\n"
         "General Options:\n"
         "  -0                 process inbound connections\n"
@@ -126,8 +127,8 @@ int main(int argc, char *argv[])
 
     plinfo_cnt = iface_cnt = 0;
 
-    while ((opt = getopt(argc, argv, "0146ab:c:de:fgh:i:km:n:r:st:w:x:y:z")) !=
-           -1) {
+    while ((opt = getopt(argc, argv,
+                         "0146ab:c:de:fgh:i:km:n:r:st:vw:x:y:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -304,6 +305,25 @@ int main(int argc, char *argv[])
                 g_ctx.dynamic_pct = tmp;
                 break;
 
+            case 'v':
+                plinfo_cnt++;
+                if (plinfo_cnt >= plinfo_cap - 1) {
+                    g_ctx.plinfo = realloc(
+                        g_ctx.plinfo, 2 * plinfo_cap * sizeof(*g_ctx.plinfo));
+                    if (!g_ctx.plinfo) {
+                        fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
+                                strerror(errno));
+                        goto free_mem;
+                    }
+                    memset(&g_ctx.plinfo[plinfo_cap], 0,
+                           plinfo_cap * sizeof(*g_ctx.plinfo));
+                    plinfo_cap *= 2;
+                }
+
+                g_ctx.plinfo[plinfo_cnt - 1].type = FH_PAYLOAD_HTTP_SIMPLE;
+                g_ctx.plinfo[plinfo_cnt - 1].info = NULL; /* -v 不需要参数 */
+                break;
+
             case 'z':
                 g_ctx.use_iptables = 1;
                 break;
@@ -343,7 +363,7 @@ int main(int argc, char *argv[])
     }
 
     if (!plinfo_cnt) {
-        fprintf(stderr, "%s: option -h, -b or -c is required.\n", argv[0]);
+        fprintf(stderr, "%s: option -h, -b, -c or -v is required.\n", argv[0]);
         print_usage(argv[0]);
         goto free_mem;
     }

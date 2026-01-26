@@ -261,6 +261,91 @@ static int append_raw(char **p, size_t *remain, const uint8_t *data,
     return 0;
 }
 
+/*
+ * 生成随机小数，格式：0.xxxxxxxxxxxxxxxxx (17位小数)
+ * 例如：0.6406337111524206
+ */
+static void generate_random_decimal(char *buf, size_t buflen)
+{
+    /* 生成 17 位随机数字 */
+    unsigned long long r1, r2, r3;
+    r1 = (unsigned long long) rand() % 1000000; /* 6位 */
+    r2 = (unsigned long long) rand() % 1000000; /* 6位 */
+    r3 = (unsigned long long) rand() % 100000;  /* 5位 */
+    snprintf(buf, buflen, "0.%06llu%06llu%05llu", r1, r2, r3);
+}
+
+static int make_http_simple(uint8_t *buffer, size_t *len)
+{
+    const struct browser_profile *bp;
+    char *p;
+    size_t remain, buffsize;
+    char uri_r[32], referer_r[32];
+    int r;
+
+    buffsize = *len;
+    if (buffsize < 256) {
+        E("ERROR: buffer is too small for HTTP simple payload");
+        return -1;
+    }
+
+    p = (char *) buffer;
+    remain = buffsize;
+
+    /* 1. 随机选择浏览器 Profile */
+    r = rand_range(0, 99);
+    if (r < 40) {
+        bp = &browser_profiles[0]; /* Chrome / Windows */
+    } else if (r < 70) {
+        bp = &browser_profiles[1]; /* Chrome / Android */
+    } else if (r < 85) {
+        bp = &browser_profiles[2]; /* Firefox / Windows */
+    } else {
+        bp = &browser_profiles[3]; /* Safari / macOS */
+    }
+
+    /* 2. 生成两个不同的随机小数（URI 和 Referer 中的 r 参数） */
+    do {
+        generate_random_decimal(uri_r, sizeof(uri_r));
+        generate_random_decimal(referer_r, sizeof(referer_r));
+    } while (strcmp(uri_r, referer_r) == 0); /* 确保不重复 */
+
+    /* 3. 构建 HTTP 请求 */
+    /* Request Line: POST /backend/empty.php?r=... HTTP/1.1 */
+    if (append_format(&p, &remain, "POST /backend/empty.php?r=%s HTTP/1.1\r\n",
+                      uri_r) < 0) {
+        return -1;
+    }
+
+    /* Host */
+    if (append_format(&p, &remain, "Host: test.ustc.edu.cn\r\n") < 0) {
+        return -1;
+    }
+
+    /* User-Agent */
+    if (append_format(&p, &remain, "User-Agent: %s\r\n", bp->ua) < 0) {
+        return -1;
+    }
+
+    /* Referer */
+    if (append_format(
+            &p, &remain,
+            "Referer: "
+            "https://test.ustc.edu.cn/speedtest_worker.js.php?r=%s\r\n",
+            referer_r) < 0) {
+        return -1;
+    }
+
+    /* Header 结束空行 */
+    if (append_format(&p, &remain, "\r\n") < 0) {
+        return -1;
+    }
+
+    *len = buffsize - remain;
+
+    return 0;
+}
+
 static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
 {
     const struct browser_profile *bp;
@@ -698,6 +783,16 @@ int fh_payload_setup(void)
                 res = make_http_random(node->payload, &len, pinfo->info);
                 if (res < 0) {
                     E(T(make_http_random));
+                    goto cleanup;
+                }
+                node->payload_len = len;
+                break;
+
+            case FH_PAYLOAD_HTTP_SIMPLE:
+                len = sizeof(node->payload);
+                res = make_http_simple(node->payload, &len);
+                if (res < 0) {
+                    E(T(make_http_simple));
                     goto cleanup;
                 }
                 node->payload_len = len;
