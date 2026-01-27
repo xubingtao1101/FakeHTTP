@@ -32,7 +32,7 @@
 #include "globvar.h"
 
 #define CAPACITY 1000
-#define PACKET_THRESHOLD 100
+#define PACKET_THRESHOLD 10
 #define CONNECTION_TIMEOUT 300 /* 5 分钟超时 */
 
 struct connection {
