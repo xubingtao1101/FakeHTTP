@@ -41,6 +41,7 @@
 #include "rawsend.h"
 #include "signals.h"
 #include "srcinfo.h"
+#include "conntrack.h"
 
 #ifndef PROGNAME
 #define PROGNAME "fakehttp"
@@ -426,10 +427,16 @@ int main(int argc, char *argv[])
         goto cleanup_payload;
     }
 
+    res = fh_conntrack_setup();
+    if (res < 0) {
+        EE(T(fh_conntrack_setup));
+        goto cleanup_srcinfo;
+    }
+
     res = fh_rawsend_setup();
     if (res < 0) {
         EE(T(fh_rawsend_setup));
-        goto cleanup_srcinfo;
+        goto cleanup_conntrack;
     }
 
     res = fh_nfq_setup();
@@ -502,6 +509,9 @@ cleanup_nfq:
 
 cleanup_rawsend:
     fh_rawsend_cleanup();
+
+cleanup_conntrack:
+    fh_conntrack_cleanup();
 
 cleanup_srcinfo:
     fh_srcinfo_cleanup();

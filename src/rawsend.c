@@ -39,6 +39,7 @@
 #include "logging.h"
 #include "payload.h"
 #include "srcinfo.h"
+#include "conntrack.h"
 
 static uint8_t *payload = NULL;
 static size_t payload_len = 0;
@@ -527,10 +528,110 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
 
         return NF_ACCEPT;
     } else if (sll->sll_pkttype == PACKET_HOST) {
+        /*
+         * 已建立的连接，检查是否需要发送伪造包
+         */
+        if (!(tcph->syn || tcph->fin || tcph->rst)) {
+            /* 普通数据包，增加计数 */
+            int should_send_fake = fh_conntrack_increment(
+                saddr, daddr, ntohs(tcph->source), ntohs(tcph->dest));
+
+            if (should_send_fake == 1) {
+                /* 达到阈值，发送伪造包 */
+                if (g_ctx.outbound) {
+                    th_payload_get(&payload, &payload_len);
+
+                    snd_ttl = g_ctx.ttl;
+                    if (!g_ctx.nohopest) {
+                        hop = hop_estimate(src_ttl);
+                        if (hop > g_ctx.ttl) {
+                            snd_ttl = calc_snd_ttl(hop);
+                        }
+                    }
+
+                    /* 出站连接：使用对端期望的序列号作为伪造包的 seq */
+                    uint32_t fake_seq = tcph->ack_seq;
+                    /* 确认当前收到的包 */
+                    uint32_t fake_ack = ntohl(tcph->seq);
+                    fake_ack += src_payload_len;
+                    fake_ack = htonl(fake_ack);
+
+                    for (i = 0; i < g_ctx.repeat; i++) {
+                        res = send_payload(sll, daddr, saddr, snd_ttl,
+                                           tcph->dest, tcph->source, fake_seq,
+                                           fake_ack, 0);
+                        if (res < 0) {
+                            E(T(send_payload));
+                        }
+                    }
+                    E_INFO("%s:%u <===FAKE(100)=== %s:%u", src_ip_str,
+                           ntohs(tcph->source), dst_ip_str, ntohs(tcph->dest));
+                }
+            } else if (should_send_fake < 0) {
+                E("ERROR: fh_conntrack_increment() failed");
+            }
+        } else if (tcph->fin || tcph->rst) {
+            /* 连接关闭，清理跟踪 */
+            fh_conntrack_remove(saddr, daddr, ntohs(tcph->source),
+                                ntohs(tcph->dest));
+        }
+
         E_INFO("%s:%u ===(~)===> %s:%u", src_ip_str, ntohs(tcph->source),
                dst_ip_str, ntohs(tcph->dest));
         return NF_ACCEPT;
     } else if (sll->sll_pkttype == PACKET_OUTGOING) {
+        /*
+         * 已建立的连接，检查是否需要发送伪造包
+         */
+        if (!(tcph->syn || tcph->fin || tcph->rst)) {
+            /* 普通数据包，增加计数 */
+            int should_send_fake = fh_conntrack_increment(
+                saddr, daddr, ntohs(tcph->source), ntohs(tcph->dest));
+
+            if (should_send_fake == 1) {
+                /* 达到阈值，发送伪造包 */
+                if (g_ctx.inbound) {
+                    srcinfo_unavail = fh_srcinfo_get(daddr, &src_ttl,
+                                                     sll->sll_addr);
+                    if (!srcinfo_unavail) {
+                        th_payload_get(&payload, &payload_len);
+
+                        snd_ttl = g_ctx.ttl;
+                        if (!g_ctx.nohopest) {
+                            hop = hop_estimate(src_ttl);
+                            if (hop > g_ctx.ttl) {
+                                snd_ttl = calc_snd_ttl(hop);
+                            }
+                        }
+
+                        /* 入站连接：使用当前包的序列号作为伪造包的 seq */
+                        uint32_t fake_seq = tcph->seq;
+                        /* 确认对端的包 */
+                        uint32_t fake_ack = tcph->ack_seq;
+
+                        for (i = 0; i < g_ctx.repeat; i++) {
+                            res = send_payload(sll, saddr, daddr, snd_ttl,
+                                               tcph->source, tcph->dest,
+                                               fake_seq, fake_ack,
+                                               g_ctx.use_iptables);
+                            if (res < 0) {
+                                E(T(send_payload));
+                            }
+                        }
+                        E_INFO("%s:%u <===FAKE(100)=== %s:%u", dst_ip_str,
+                               ntohs(tcph->dest), src_ip_str,
+                               ntohs(tcph->source));
+                    }
+                }
+            } else if (should_send_fake < 0) {
+                E("ERROR: fh_conntrack_increment() failed");
+            }
+        } else if (tcph->fin || tcph->rst) {
+            /* 连接关闭，清理跟踪 */
+            fh_conntrack_remove(saddr, daddr, ntohs(tcph->source),
+                                ntohs(tcph->dest));
+        }
+
         E_INFO("%s:%u <===(~)=== %s:%u", dst_ip_str, ntohs(tcph->dest),
                src_ip_str, ntohs(tcph->source));
         return NF_ACCEPT;
