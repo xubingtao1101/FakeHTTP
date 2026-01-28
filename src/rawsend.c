@@ -21,6 +21,7 @@
 #include "rawsend.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
@@ -564,8 +565,9 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
                             E(T(send_payload));
                         }
                     }
-                    E_INFO("%s:%u <===FAKE(100)=== %s:%u", src_ip_str,
-                           ntohs(tcph->source), dst_ip_str, ntohs(tcph->dest));
+                    E_INFO("%s:%u <===FAKE(%" PRIu32 ")=== %s:%u", src_ip_str,
+                           ntohs(tcph->source), g_ctx.packet_threshold,
+                           dst_ip_str, ntohs(tcph->dest));
                 }
             } else if (should_send_fake < 0) {
                 E("ERROR: fh_conntrack_increment() failed");
@@ -618,8 +620,9 @@ int fh_rawsend_handle(struct sockaddr_ll *sll, uint8_t *pkt_data, int pkt_len,
                                 E(T(send_payload));
                             }
                         }
-                        E_INFO("%s:%u <===FAKE(100)=== %s:%u", dst_ip_str,
-                               ntohs(tcph->dest), src_ip_str,
+                        E_INFO("%s:%u <===FAKE(%" PRIu32 ")=== %s:%u",
+                               dst_ip_str, ntohs(tcph->dest),
+                               g_ctx.packet_threshold, src_ip_str,
                                ntohs(tcph->source));
                     }
                 }
