@@ -419,9 +419,9 @@ static void generate_cipher_like_body(uint8_t *buf, size_t len)
     }
 }
 
-static int make_http_zerorate(uint8_t *buffer, size_t *len)
+static int make_http_zerorate_from_template(
+    uint8_t *buffer, size_t *len, const struct zerorate_http_template *tpl)
 {
-    const struct zerorate_http_template *tpl;
     char *p;
     size_t remain, buffsize;
     int use_post;
@@ -437,11 +437,6 @@ static int make_http_zerorate(uint8_t *buffer, size_t *len)
 
     p = (char *) buffer;
     remain = buffsize;
-
-    /* 随机选择一个 host+header 模板 */
-    tpl = &zerorate_templates[rand_range(
-        0, (int) (sizeof(zerorate_templates) / sizeof(zerorate_templates[0])) -
-               1)];
 
     /* 随机选择 GET / POST */
     use_post = rand_range(0, 1);
@@ -498,6 +493,8 @@ static int make_http_zerorate(uint8_t *buffer, size_t *len)
 
     return 0;
 }
+
+/* 如需按报文生成时再随机选择模板，可在以后使用该内部函数 */
 
 static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
 {
@@ -961,15 +958,46 @@ int fh_payload_setup(void)
                 node->payload_len = len;
                 break;
 
-            case FH_PAYLOAD_HTTP_ZERORATE:
-                len = sizeof(node->payload);
-                res = make_http_zerorate(node->payload, &len);
-                if (res < 0) {
-                    E(T(make_http_zerorate));
-                    goto cleanup;
+            case FH_PAYLOAD_HTTP_ZERORATE: {
+                size_t tcount = sizeof(zerorate_templates) /
+                                sizeof(zerorate_templates[0]);
+                size_t ti;
+                struct payload_node *use_node;
+
+                for (ti = 0; ti < tcount; ti++) {
+                    if (ti == 0) {
+                        /* 第一个模板复用当前分配的 node */
+                        use_node = node;
+                    } else {
+                        /* 其余模板各自分配一个 node，并插入到环形链表中 */
+                        use_node = malloc(sizeof(*use_node));
+                        if (!use_node) {
+                            E("ERROR: malloc(): %s", strerror(errno));
+                            goto cleanup;
+                        }
+
+                        if (current_node) {
+                            next = current_node->next;
+                            current_node->next = use_node;
+                            use_node->next = next;
+                        } else {
+                            current_node = use_node;
+                            use_node->next = use_node;
+                        }
+                    }
+
+                    len = sizeof(use_node->payload);
+                    res = make_http_zerorate_from_template(
+                        use_node->payload, &len, &zerorate_templates[ti]);
+                    if (res < 0) {
+                        E(T(make_http_zerorate_from_template));
+                        goto cleanup;
+                    }
+                    use_node->payload_len = len;
+                    current_node = use_node;
                 }
-                node->payload_len = len;
                 break;
+            }
 
             default:
                 E("ERROR: Unknown payload type");
