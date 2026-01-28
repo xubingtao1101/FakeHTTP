@@ -172,6 +172,68 @@ static const struct browser_profile browser_profiles[] = {
     },
 };
 
+struct zerorate_http_template {
+    const char *host;
+    const char
+        *headers; /* WITHOUT trailing CRLF, may contain internal \\r\\n */
+};
+
+static const struct zerorate_http_template zerorate_templates[] = {
+    {
+        .host = "vali-dns.cp31.ott.cibntv.net",
+        .headers = "Range: bytes=25165824-32586598\r\n"
+                   "Accept: */*",
+    },
+    {
+        .host = "ltevod.tv189.cn",
+        .headers = "Connection: Keep-Alive\r\n"
+                   "Accept-Encoding: gzip",
+    },
+    {
+        .host = "woif.10155.com",
+        .headers = "Accept-Encoding: gzip",
+    },
+    {
+        .host = "szminorshort.weixin.qq.com",
+        .headers = "Upgrade: mmtls\r\n"
+                   "Accept: */*\r\n"
+                   "Connection: close\r\n"
+                   "Content-Type: application/octet-stream",
+    },
+    {
+        .host = "adashbc.m.taobao.com",
+        .headers = "Accept-Encoding: gzip",
+    },
+    {
+        .host = "asp.cntv.myalicdn.com",
+        .headers = "Icy-MetaData: 1",
+    },
+    {
+        .host = "dm.toutiao.com",
+        .headers = "Connection: Keep-Alive\r\n"
+                   "Accept-Encoding: gzip",
+    },
+    {
+        .host = "tbcdn.hiphotos.baidu.com",
+        .headers = "needginfo: 1\r\n"
+                   "Connection: Keep-Alive\r\n"
+                   "User-Agent: bdtb for Android 9.0.8.0",
+    },
+    {
+        .host = "data.video.qiyi.com",
+        .headers = "Accept: */*",
+    },
+    {
+        .host = "apimeishi.meituan.com",
+        .headers = "Connection: Keep-Alive",
+    },
+    {
+        .host = "mps.amap.com",
+        .headers = "Connection: Keep-Alive\r\n"
+                   "Accept-Encoding: gzip",
+    },
+};
+
 static int rand_range(int min, int max)
 {
     if (max <= min) {
@@ -339,6 +401,97 @@ static int make_http_simple(uint8_t *buffer, size_t *len)
     /* Header 结束空行 */
     if (append_format(&p, &remain, "\r\n") < 0) {
         return -1;
+    }
+
+    *len = buffsize - remain;
+
+    return 0;
+}
+
+static void generate_cipher_like_body(uint8_t *buf, size_t len)
+{
+    static const char charset[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    size_t i;
+
+    for (i = 0; i < len; i++) {
+        buf[i] = (uint8_t) charset[rand() % (sizeof(charset) - 1)];
+    }
+}
+
+static int make_http_zerorate(uint8_t *buffer, size_t *len)
+{
+    const struct zerorate_http_template *tpl;
+    char *p;
+    size_t remain, buffsize;
+    int use_post;
+    const char *method_str;
+    size_t body_len = 0;
+    uint8_t body_buf[100];
+
+    buffsize = *len;
+    if (buffsize < 256) {
+        E("ERROR: buffer is too small for HTTP zerorate payload");
+        return -1;
+    }
+
+    p = (char *) buffer;
+    remain = buffsize;
+
+    /* 随机选择一个 host+header 模板 */
+    tpl = &zerorate_templates[rand_range(
+        0, (int) (sizeof(zerorate_templates) / sizeof(zerorate_templates[0])) -
+               1)];
+
+    /* 随机选择 GET / POST */
+    use_post = rand_range(0, 1);
+    method_str = use_post ? "POST" : "GET";
+
+    /* 请求行 */
+    if (append_format(&p, &remain, "%s / HTTP/1.1\r\n", method_str) < 0) {
+        return -1;
+    }
+
+    /* Host */
+    if (append_format(&p, &remain, "Host: %s\r\n", tpl->host) < 0) {
+        return -1;
+    }
+
+    /* 固定头部 */
+    if (append_format(&p, &remain, "%s\r\n", tpl->headers) < 0) {
+        return -1;
+    }
+
+    if (use_post) {
+        /* 生成一个 < 100 字节的“加密风格” body */
+        body_len = (size_t) rand_range(32, 96);
+        if (body_len > sizeof(body_buf)) {
+            body_len = sizeof(body_buf);
+        }
+        generate_cipher_like_body(body_buf, body_len);
+
+        /* 把 Content-Type/Content-Length 补齐到 header 里 */
+        if (append_format(&p, &remain,
+                          "Content-Type: application/octet-stream\r\n") < 0) {
+            return -1;
+        }
+
+        if (append_format(&p, &remain, "Content-Length: %zu\r\n", body_len) <
+            0) {
+            return -1;
+        }
+    }
+
+    /* Header 结束空行 */
+    if (append_format(&p, &remain, "\r\n") < 0) {
+        return -1;
+    }
+
+    /* 写入 body（仅 POST） */
+    if (use_post && body_len > 0) {
+        if (append_raw(&p, &remain, body_buf, body_len) < 0) {
+            return -1;
+        }
     }
 
     *len = buffsize - remain;
@@ -803,6 +956,16 @@ int fh_payload_setup(void)
                 res = make_http_simple(node->payload, &len);
                 if (res < 0) {
                     E(T(make_http_simple));
+                    goto cleanup;
+                }
+                node->payload_len = len;
+                break;
+
+            case FH_PAYLOAD_HTTP_ZERORATE:
+                len = sizeof(node->payload);
+                res = make_http_zerorate(node->payload, &len);
+                if (res < 0) {
+                    E(T(make_http_zerorate));
                     goto cleanup;
                 }
                 node->payload_len = len;

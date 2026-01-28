@@ -67,6 +67,7 @@ static void print_usage(const char *name)
         "  -c <hostname>      custom/random HTTP payload hostname (advanced)\n"
         "  -C <hostname>      TLS client hello payload\n"
         "  -v                 simple random HTTP POST payload\n"
+        "  -F                 carrier zero-rating HTTP payload presets\n"
         "\n"
         "General Options:\n"
         "  -0                 process inbound connections\n"
@@ -131,7 +132,7 @@ int main(int argc, char *argv[])
     plinfo_cnt = iface_cnt = 0;
 
     while ((opt = getopt(argc, argv,
-                         "0146ab:c:C:de:fgh:i:km:n:r:sT:t:vw:x:y:z")) != -1) {
+                         "0146ab:c:C:de:fFgh:i:km:n:r:sT:t:vw:x:y:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -340,6 +341,43 @@ int main(int argc, char *argv[])
                 g_ctx.plinfo[plinfo_cnt - 1].info = NULL; /* -v 不需要参数 */
                 break;
 
+            case 'F':
+                /* -F 只需要生效一次，如果已经添加过则忽略后续 -F */
+                {
+                    size_t i;
+                    int exists = 0;
+                    for (i = 0; i < plinfo_cnt; i++) {
+                        if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP_ZERORATE) {
+                            exists = 1;
+                            break;
+                        }
+                    }
+                    if (exists) {
+                        break;
+                    }
+
+                    plinfo_cnt++;
+                    if (plinfo_cnt >= plinfo_cap - 1) {
+                        g_ctx.plinfo = realloc(
+                            g_ctx.plinfo,
+                            2 * plinfo_cap * sizeof(*g_ctx.plinfo));
+                        if (!g_ctx.plinfo) {
+                            fprintf(stderr, "%s: calloc(): %s.\n", argv[0],
+                                    strerror(errno));
+                            goto free_mem;
+                        }
+                        memset(&g_ctx.plinfo[plinfo_cap], 0,
+                               plinfo_cap * sizeof(*g_ctx.plinfo));
+                        plinfo_cap *= 2;
+                    }
+
+                    g_ctx.plinfo[plinfo_cnt - 1].type =
+                        FH_PAYLOAD_HTTP_ZERORATE;
+                    g_ctx.plinfo[plinfo_cnt - 1].info =
+                        NULL; /* -F 不需要参数 */
+                }
+                break;
+
             case 'z':
                 g_ctx.use_iptables = 1;
                 break;
@@ -379,7 +417,7 @@ int main(int argc, char *argv[])
     }
 
     if (!plinfo_cnt) {
-        fprintf(stderr, "%s: option -h, -b, -c, -C or -v is required.\n",
+        fprintf(stderr, "%s: option -h, -b, -c, -C, -v or -F is required.\n",
                 argv[0]);
         print_usage(argv[0]);
         goto free_mem;
@@ -443,6 +481,8 @@ int main(int argc, char *argv[])
         EE(T(fh_conntrack_setup));
         goto cleanup_srcinfo;
     }
+
+    E("conntrack packet threshold set to %" PRIu32, g_ctx.packet_threshold);
 
     res = fh_rawsend_setup();
     if (res < 0) {

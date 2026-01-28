@@ -25,6 +25,10 @@ Payload Options:
   -b <file>          use TCP payload from binary file
   -e <hostname>      hostname for HTTPS obfuscation
   -h <hostname>      hostname for HTTP obfuscation
+  -c <hostname>      custom/random HTTP payload hostname (advanced)
+  -C <hostname>      TLS client hello payload
+  -v                 simple random HTTP POST payload
+  -F                 carrier zero-rating HTTP payload presets
 
 General Options:
   -0                 process inbound connections
