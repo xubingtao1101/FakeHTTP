@@ -84,6 +84,7 @@ static void print_usage(const char *name)
         "  -m <mark>          fwmark for bypassing the queue\n"
         "  -n <number>        netfilter queue number\n"
         "  -r <repeat>        duplicate generated packets for <repeat> times\n"
+        "  -T <number>        conntrack packet threshold (default: 100)\n"
         "  -t <ttl>           TTL for generated packets\n"
         "  -x <mask>          set the mask for fwmark\n"
         "  -y <pct>           raise TTL dynamically to <pct>%% of estimated "
@@ -130,7 +131,7 @@ int main(int argc, char *argv[])
     plinfo_cnt = iface_cnt = 0;
 
     while ((opt = getopt(argc, argv,
-                         "0146ab:c:C:de:fgh:i:km:n:r:st:vw:x:y:z")) != -1) {
+                         "0146ab:c:C:de:fgh:i:km:n:r:sT:t:vw:x:y:z")) != -1) {
         switch (opt) {
             case '0':
                 g_ctx.inbound = 1;
@@ -268,6 +269,16 @@ int main(int argc, char *argv[])
 
             case 's':
                 g_ctx.silent = 1;
+                break;
+
+            case 'T':
+                tmp = strtoull(optarg, NULL, 0);
+                if (!tmp || tmp > UINT32_MAX) {
+                    fprintf(stderr, "%s: invalid value for -T.\n", argv[0]);
+                    print_usage(argv[0]);
+                    goto free_mem;
+                }
+                g_ctx.packet_threshold = tmp;
                 break;
 
             case 't':

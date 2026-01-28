@@ -42,6 +42,7 @@ Advanced Options:
   -m <mark>          fwmark for bypassing the queue
   -n <number>        netfilter queue number
   -r <repeat>        duplicate generated packets for <repeat> times
+  -T <number>        conntrack packet threshold (default: 100)
   -t <ttl>           TTL for generated packets
   -x <mask>          set the mask for fwmark
   -y <pct>           raise TTL dynamically to <pct>% of estimated hops

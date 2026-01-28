@@ -43,6 +43,7 @@ struct fh_context {
     /* -n */ uint32_t nfqnum;
     /* -r */ int repeat;
     /* -s */ int silent;
+    /* -T */ uint32_t packet_threshold;
     /* -t */ uint8_t ttl;
     /* -w */ const char *logpath;
     /* -x */ uint32_t fwmask;

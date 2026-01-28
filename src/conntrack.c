@@ -31,8 +31,7 @@
 #include "logging.h"
 #include "globvar.h"
 
-#define CAPACITY 1000
-#define PACKET_THRESHOLD 10
+#define CAPACITY           1000
 #define CONNECTION_TIMEOUT 300 /* 5 分钟超时 */
 
 struct connection {
@@ -94,8 +93,8 @@ static int same_connection(struct connection *conn, struct sockaddr *saddr,
 }
 
 static struct connection *find_connection(struct sockaddr *saddr,
-                                         struct sockaddr *daddr,
-                                         uint16_t sport, uint16_t dport)
+                                          struct sockaddr *daddr,
+                                          uint16_t sport, uint16_t dport)
 {
     size_t i;
 
@@ -109,9 +108,9 @@ static struct connection *find_connection(struct sockaddr *saddr,
 }
 
 static struct connection *find_or_create_connection(struct sockaddr *saddr,
-                                                      struct sockaddr *daddr,
-                                                      uint16_t sport,
-                                                      uint16_t dport)
+                                                    struct sockaddr *daddr,
+                                                    uint16_t sport,
+                                                    uint16_t dport)
 {
     struct connection *conn;
     time_t now;
@@ -196,7 +195,7 @@ void fh_conntrack_cleanup(void)
 }
 
 int fh_conntrack_increment(struct sockaddr *saddr, struct sockaddr *daddr,
-                            uint16_t sport, uint16_t dport)
+                           uint16_t sport, uint16_t dport)
 {
     struct connection *conn;
 
@@ -212,7 +211,7 @@ int fh_conntrack_increment(struct sockaddr *saddr, struct sockaddr *daddr,
     conn->packet_count++;
     conn->last_seen = time(NULL);
 
-    if (conn->packet_count >= PACKET_THRESHOLD) {
+    if (conn->packet_count >= g_ctx.packet_threshold) {
         conn->packet_count = 0; /* 重置计数 */
         return 1;               /* 达到阈值 */
     }
