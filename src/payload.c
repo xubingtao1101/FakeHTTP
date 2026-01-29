@@ -242,6 +242,86 @@ static int rand_range(int min, int max)
     return min + rand() % (max - min + 1);
 }
 
+static void rand_hex(char *dst, size_t hex_len)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t i;
+    if (!dst || hex_len == 0) {
+        return;
+    }
+    for (i = 0; i < hex_len; i++) {
+        dst[i] = hex[rand() % (sizeof(hex) - 1)];
+    }
+    dst[hex_len] = '\0';
+}
+
+static void make_random_carrier_uri(char *dst, size_t dstlen)
+{
+    int which = rand_range(0, 2);
+    char token[33];
+    char access_token[33];
+
+    rand_hex(token, 32);
+    rand_hex(access_token, 32);
+
+    if (which == 0) {
+        /* /ik4g/v/C40605803.html?appid=...&token=...&devid=...&version=...&channelid=...
+         */
+        unsigned int c_id = (unsigned int) rand_range(10000000, 99999999);
+        unsigned int appid_hi = (unsigned int) rand_range(100000, 999999);
+        unsigned int appid_lo = (unsigned int) rand_range(100000, 999999);
+        unsigned int devid = (unsigned int) rand_range(0, 999999);
+        unsigned int channelid = (unsigned int) rand_range(10000000, 99999999);
+        int v1 = rand_range(1, 9);
+        int v2 = rand_range(0, 9);
+        int v3 = rand_range(0, 99);
+        int v4 = rand_range(0, 99);
+        int ctch = rand_range(1, 9);
+        snprintf(
+            dst, dstlen,
+            "/ik4g/v/C%08u.html?appid=%06u%06u&token=%s&devid=%06u&version="
+            "%d.%d.%d.%dctch%d&channelid=%08u",
+            c_id, appid_hi, appid_lo, token, devid, v1, v2, v3, v4, ctch,
+            channelid);
+    } else if (which == 1) {
+        /* /res/V/1388/mp3/33/58/94/1388335894003000.mp3?mb=...&fs=...&... */
+        unsigned int vdir = (unsigned int) rand_range(1000, 9999);
+        unsigned int a = (unsigned int) rand_range(10, 99);
+        unsigned int b = (unsigned int) rand_range(10, 99);
+        unsigned int c = (unsigned int) rand_range(10, 99);
+        unsigned int file_prefix = (unsigned int) rand_range(1000, 9999);
+        unsigned int f1 = (unsigned int) rand_range(10, 99);
+        unsigned int f2 = (unsigned int) rand_range(10, 99);
+        unsigned int f3 = (unsigned int) rand_range(10, 99);
+        unsigned int f4 = (unsigned int) rand_range(1000, 9999);
+        unsigned int fs = (unsigned int) rand_range(1000000, 99999999);
+        unsigned int s = (unsigned int) rand_range(100, 900);
+        unsigned int id = (unsigned int) rand_range(10000000, 99999999);
+        unsigned int sid = (unsigned int) rand_range(100000000, 999999999);
+        /* 构造 11 位手机号样式：1 + 10位数字（用两段 5 位拼接，避免溢出） */
+        unsigned int mb_a = (unsigned int) rand_range(0, 99999);
+        unsigned int mb_b = (unsigned int) rand_range(0, 99999);
+
+        snprintf(dst, dstlen,
+                 "/res/V/%04u/mp3/%02u/%02u/%02u/%04u%02u%02u%02u%04u.mp3?"
+                 "mb=1%05u%05u&fs=%u&s=%u&n=&id=%u&M=online&sid=%u",
+                 vdir, a, b, c, file_prefix, f1, f2, f3, f4, mb_a, mb_b, fs, s,
+                 id, sid);
+    } else {
+        /* /api/v2/egame/log.json?access_token=...&imsi=...&vc=...&... */
+        unsigned int imsi_tail = (unsigned int) rand_range(100000000,
+                                                           999999999);
+        unsigned int vc = (unsigned int) rand_range(10, 300);
+        unsigned int app_key = (unsigned int) rand_range(1000000, 9999999);
+        unsigned int channel_id = (unsigned int) rand_range(10000000,
+                                                            99999999);
+        snprintf(dst, dstlen,
+                 "/api/v2/egame/log.json?access_token=%s&imsi=4600%011u&vc=%u&"
+                 "app_key=%u&channel_id=%u",
+                 access_token, imsi_tail, vc, app_key, channel_id);
+    }
+}
+
 static void make_speedtest_host(char *host, size_t hostlen)
 {
     int a, b, c, d, port, n;
@@ -507,6 +587,7 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
     char referer_url[256];
     const char *method_str;
     const char *path;
+    char pathbuf[512];
     int method; /* 0: GET, 1: POST, 2: PUT, 3: OPTIONS */
     int is_top_level;
     int is_cross_origin;
@@ -514,8 +595,8 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
     int has_referer;
     int target_method_for_cors;
     size_t body_len = 0;
-    uint8_t body_buf[256];
-    int i, r;
+    uint8_t body_buf[100];
+    int r;
 
     buffsize = *len;
     if (buffsize < 128) {
@@ -557,7 +638,8 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
     switch (method) {
         case 0:
             method_str = "GET";
-            path = "/download";
+            make_random_carrier_uri(pathbuf, sizeof(pathbuf));
+            path = pathbuf;
             break;
         case 1:
             method_str = "POST";
@@ -570,7 +652,8 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
         case 3:
         default:
             method_str = "OPTIONS";
-            path = "/download";
+            make_random_carrier_uri(pathbuf, sizeof(pathbuf));
+            path = pathbuf;
             break;
     }
 
@@ -592,10 +675,9 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
                  origin_host);
     }
 
-    /* 5. HEAD LINE: METHOD PATH?query HTTP/1.1 */
-    r = rand_range(10000, 99999);
-    if (append_format(&p, &remain, "%s %s?id=%d HTTP/1.1\r\n", method_str,
-                      path, r) < 0) {
+    /* 5. HEAD LINE: METHOD PATH HTTP/1.1 */
+    if (append_format(&p, &remain, "%s %s HTTP/1.1\r\n", method_str, path) <
+        0) {
         return -1;
     }
 
@@ -656,26 +738,16 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
     /* 7. Content-Type / Content-Length / CORS / sec-fetch-* */
     if (method == 1 || method == 2) {
         /* POST / PUT: 必须有 body 和 Content-Length */
-        body_len = (size_t) rand_range(32, 192);
-        if (body_len > sizeof(body_buf)) {
-            body_len = sizeof(body_buf);
+        body_len = (size_t) rand_range(24, 96); /* < 100 bytes */
+        if (body_len >= sizeof(body_buf)) {
+            body_len = sizeof(body_buf) - 1;
         }
 
-        /* 简单 form body：k=v&... */
-        for (i = 0; i < (int) body_len; i++) {
-            int ctype = rand_range(0, 2);
-            if (ctype == 0) {
-                body_buf[i] = (uint8_t) ('a' + rand_range(0, 25));
-            } else if (ctype == 1) {
-                body_buf[i] = (uint8_t) ('0' + rand_range(0, 9));
-            } else {
-                body_buf[i] = (uint8_t) ("=&"[rand_range(0, 1)]);
-            }
-        }
+        /* “加密风格”内容：Base64/随机密文样式 */
+        generate_cipher_like_body(body_buf, body_len);
 
-        if (append_format(
-                &p, &remain,
-                "Content-Type: application/x-www-form-urlencoded\r\n") < 0) {
+        if (append_format(&p, &remain,
+                          "Content-Type: application/octet-stream\r\n") < 0) {
             return -1;
         }
 
