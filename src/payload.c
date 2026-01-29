@@ -322,6 +322,40 @@ static void make_random_carrier_uri(char *dst, size_t dstlen)
     }
 }
 
+static void make_random_post_uri(char *dst, size_t dstlen)
+{
+    /* 模拟上传/提交类接口 */
+    int which = rand_range(0, 1);
+    unsigned int id = (unsigned int) rand_range(10000000, 99999999);
+
+    if (which == 0) {
+        /* /api/v1/upload?file_id=...&session=... */
+        snprintf(dst, dstlen, "/api/v1/upload?file_id=%08u&session=%s", id,
+                 (rand_range(0, 1) == 0) ? "sess" : "auth");
+    } else {
+        /* /user/profile/update?uid=...&token=... */
+        snprintf(dst, dstlen, "/user/profile/update?uid=%08u&token=%s", id,
+                 (rand_range(0, 1) == 0) ? "auth" : "token");
+    }
+}
+
+static void make_random_put_uri(char *dst, size_t dstlen)
+{
+    /* 模拟日志/上报接口 */
+    int which = rand_range(0, 1);
+    unsigned int id = (unsigned int) rand_range(10000000, 99999999);
+    unsigned int r = (unsigned int) rand();
+
+    if (which == 0) {
+        /* /log/collect?device_id=...&ts=... */
+        snprintf(dst, dstlen, "/log/collect?device_id=%08u&ts=%u", id, r);
+    } else {
+        /* /api/v2/report?event_id=...&trace_id=... */
+        snprintf(dst, dstlen, "/api/v2/report?event_id=%08u&trace_id=%u", id,
+                 r);
+    }
+}
+
 static void make_speedtest_host(char *host, size_t hostlen)
 {
     int a, b, c, d, port, n;
@@ -643,11 +677,13 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
             break;
         case 1:
             method_str = "POST";
-            path = "/upload";
+            make_random_post_uri(pathbuf, sizeof(pathbuf));
+            path = pathbuf;
             break;
         case 2:
             method_str = "PUT";
-            path = "/upload";
+            make_random_put_uri(pathbuf, sizeof(pathbuf));
+            path = pathbuf;
             break;
         case 3:
         default:
