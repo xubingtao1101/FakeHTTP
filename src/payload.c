@@ -850,6 +850,66 @@ static int make_http_random(uint8_t *buffer, size_t *len, char *hostname)
     return 0;
 }
 
+/*
+ * 将当前的 payload 环形链表打乱成随机顺序。
+ * 仅在初始化阶段调用一次即可。
+ */
+static void shuffle_payload_ring(void)
+{
+    struct payload_node *node;
+    struct payload_node **nodes;
+    size_t count, i;
+
+    if (!current_node) {
+        return;
+    }
+
+    /* 0 或 1 个节点，无需打乱 */
+    if (current_node->next == current_node) {
+        return;
+    }
+
+    /* 1. 统计节点数量 */
+    count = 0;
+    node = current_node;
+    do {
+        count++;
+        node = node->next;
+    } while (node != current_node);
+
+    /* 2. 拷贝到数组中 */
+    nodes = malloc(count * sizeof(*nodes));
+    if (!nodes) {
+        E("ERROR: malloc(): %s", strerror(errno));
+        return;
+    }
+
+    node = current_node;
+    for (i = 0; i < count; i++) {
+        nodes[i] = node;
+        node = node->next;
+    }
+
+    /* 3. Fisher–Yates 洗牌 */
+    for (i = count - 1; i > 0; i--) {
+        size_t j = (size_t) rand_range(0, (int) i);
+        struct payload_node *tmp = nodes[i];
+        nodes[i] = nodes[j];
+        nodes[j] = tmp;
+    }
+
+    /* 4. 根据打乱后的顺序重新链接成环 */
+    for (i = 0; i + 1 < count; i++) {
+        nodes[i]->next = nodes[i + 1];
+    }
+    nodes[count - 1]->next = nodes[0];
+
+    /* 从新的首节点开始轮询 */
+    current_node = nodes[0];
+
+    free(nodes);
+}
+
 static int make_http_get(uint8_t *buffer, size_t *len, char *hostname)
 {
     int len_, buffsize;
@@ -1148,7 +1208,8 @@ int fh_payload_setup(void)
         goto cleanup;
     }
 
-    current_node = current_node->next;
+    /* payload 全部生成完成后，将环形链表整体打乱成随机顺序 */
+    shuffle_payload_ring();
 
     return 0;
 
