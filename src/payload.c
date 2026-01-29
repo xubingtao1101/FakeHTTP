@@ -1036,25 +1036,55 @@ int fh_payload_setup(void)
                 node->payload_len = len;
                 break;
 
-            case FH_PAYLOAD_HTTP_RANDOM:
-                len = sizeof(node->payload);
+            case FH_PAYLOAD_HTTP_RANDOM: {
                 /*
-                 * NOTE:
-                 *   这里调用的 make_http_random
-                 * 目前只保留框架，不做实际随机报文
-                 *   生成，由后续实现补充具体算法。
+                 * 对于每个 -c 传入的 hostname，预先生成多份随机 HTTP 报文，
+                 * 并全部挂到环形链表中，后续循环复用。
                  *
-                 *   pinfo->info 为单次 -c 传入的 hostname；
-                 *   如果需要基于所有 -c 的 hostname 进行组合/随机，
-                 *   可以在 make_http_random 内部遍历 g_ctx.plinfo。
+                 * 目前实现为：每个 hostname 生成 100 份随机报文。
                  */
-                res = make_http_random(node->payload, &len, pinfo->info);
-                if (res < 0) {
-                    E(T(make_http_random));
-                    goto cleanup;
+                size_t i;
+                struct payload_node *use_node;
+
+                for (i = 0; i < 100; i++) {
+                    if (i == 0) {
+                        /* 第一个报文复用当前分配的 node */
+                        use_node = node;
+                    } else {
+                        /* 其余报文各自分配一个 node，并插入到环形链表中 */
+                        use_node = malloc(sizeof(*use_node));
+                        if (!use_node) {
+                            E("ERROR: malloc(): %s", strerror(errno));
+                            goto cleanup;
+                        }
+
+                        if (current_node) {
+                            next = current_node->next;
+                            current_node->next = use_node;
+                            use_node->next = next;
+                        } else {
+                            current_node = use_node;
+                            use_node->next = use_node;
+                        }
+                    }
+
+                    len = sizeof(use_node->payload);
+                    /*
+                     *   pinfo->info 为单次 -c 传入的 hostname；
+                     *   如果需要基于所有 -c 的 hostname 进行组合/随机，
+                     *   可以在 make_http_random 内部遍历 g_ctx.plinfo。
+                     */
+                    res = make_http_random(use_node->payload, &len,
+                                           pinfo->info);
+                    if (res < 0) {
+                        E(T(make_http_random));
+                        goto cleanup;
+                    }
+                    use_node->payload_len = len;
+                    current_node = use_node;
                 }
-                node->payload_len = len;
                 break;
+            }
 
             case FH_PAYLOAD_HTTP_SIMPLE:
                 len = sizeof(node->payload);
