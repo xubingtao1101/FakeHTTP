@@ -28,12 +28,12 @@
 
 #include "logging.h"
 
-#define MAX_LINE_LENGTH   4096
-#define MAX_METHODS       10
-#define MAX_URIS          100
-#define MAX_HEADERS       50
-#define MAX_HEADER_VALUES 20
-#define MAX_BODY_SIZE     8192
+#define MAX_LINE_LENGTH   12288
+#define MAX_METHODS       30
+#define MAX_URIS          300
+#define MAX_HEADERS       150
+#define MAX_HEADER_VALUES 60
+#define MAX_BODY_SIZE     24576
 
 /* 去除字符串首尾空白字符 */
 static char *trim_whitespace(char *str)

@@ -23,10 +23,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MAX_METHODS       10
-#define MAX_URIS          100
-#define MAX_HEADERS       50
-#define MAX_HEADER_VALUES 20
+#define MAX_METHODS       30
+#define MAX_URIS          300
+#define MAX_HEADERS       150
+#define MAX_HEADER_VALUES 60
 
 /* Header 结构：一个 header 名可以对应多个值 */
 struct http_header {

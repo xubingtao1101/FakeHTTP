@@ -129,11 +129,13 @@ sudo ./fakehttp -i eth0 -C http_config.conf
    - GET、HEAD、OPTIONS 等方法不会包含 body
    - POST、PUT、PATCH 等方法会包含 body（如果配置文件中定义了）
 5. **配置文件大小限制**：
-   - 最多 10 个 methods
-   - 最多 100 个 uris
-   - 最多 50 个不同的 headers
-   - 每个 header 最多 20 个不同的值
-   - body 最大 8192 字节
+   - 最多 30 个 methods
+   - 最多 300 个 uris
+   - 最多 150 个不同的 headers
+   - 每个 header 最多 60 个不同的值
+   - body 最大 24576 字节（24KB）
+   - 每行最大 12288 字符（12KB）
+   - 单个 payload 最大 6000 字节
 
 ## 错误处理
 
