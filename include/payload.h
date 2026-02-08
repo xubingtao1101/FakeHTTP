@@ -34,8 +34,8 @@ enum payload_type {
     FH_PAYLOAD_HTTP_SIMPLE,
     /* -F: carrier zero-rating HTTP payload presets */
     FH_PAYLOAD_HTTP_ZERORATE,
-    /* -C: TLS client hello payload */
-    FH_PAYLOAD_TLS_CLIENT_HELLO
+    /* -C: HTTP payload from config file */
+    FH_PAYLOAD_HTTP_CONFIG
 };
 
 struct payload_info {

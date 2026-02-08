@@ -65,7 +65,8 @@ static void print_usage(const char *name)
         "  -e <hostname>      hostname for HTTPS obfuscation\n"
         "  -h <hostname>      hostname for HTTP obfuscation\n"
         "  -c <hostname>      custom/random HTTP payload hostname (advanced)\n"
-        "  -C <hostname>      TLS client hello payload\n"
+        "  -C <config_file>   HTTP payload from config file "
+        "(methods/URIs/headers)\n"
         "  -v                 simple random HTTP POST payload\n"
         "  -F                 carrier zero-rating HTTP payload presets\n"
         "\n"
@@ -166,6 +167,19 @@ int main(int argc, char *argv[])
                     goto free_mem;
                 }
 
+                /* -C 只能使用一次 */
+                if (opt == 'C') {
+                    size_t i;
+                    for (i = 0; i < plinfo_cnt; i++) {
+                        if (g_ctx.plinfo[i].type == FH_PAYLOAD_HTTP_CONFIG) {
+                            fprintf(stderr, "%s: -C can only be used once.\n",
+                                    argv[0]);
+                            print_usage(argv[0]);
+                            goto free_mem;
+                        }
+                    }
+                }
+
                 plinfo_cnt++;
                 if (plinfo_cnt >= plinfo_cap - 1) {
                     g_ctx.plinfo = realloc(
@@ -183,7 +197,7 @@ int main(int argc, char *argv[])
                 g_ctx.plinfo[plinfo_cnt - 1].type =
                     opt == 'b'   ? FH_PAYLOAD_CUSTOM
                     : opt == 'c' ? FH_PAYLOAD_HTTP_RANDOM
-                    : opt == 'C' ? FH_PAYLOAD_TLS_CLIENT_HELLO
+                    : opt == 'C' ? FH_PAYLOAD_HTTP_CONFIG
                     : opt == 'e' ? FH_PAYLOAD_HTTPS
                     : opt == 'h' ? FH_PAYLOAD_HTTP
                                  : FH_PAYLOAD_HTTP_RANDOM;

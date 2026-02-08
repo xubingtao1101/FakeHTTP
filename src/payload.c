@@ -29,6 +29,7 @@
 
 #include "logging.h"
 #include "globvar.h"
+#include "config_parser.h"
 
 #define BUFFLEN 2000
 #define SET_BE16(a, u16)         \
@@ -1086,15 +1087,72 @@ int fh_payload_setup(void)
                 node->payload_len = len;
                 break;
 
-            case FH_PAYLOAD_TLS_CLIENT_HELLO:
-                len = sizeof(node->payload);
-                res = make_tls_client_hello(node->payload, &len, pinfo->info);
+            case FH_PAYLOAD_HTTP_CONFIG: {
+                /*
+                 * 新的 -C 功能：从配置文件生成多个 payload
+                 * 根据配置文件中的 methods, uris, headers 的组合生成所有可能的
+                 * payload
+                 */
+                struct http_config config;
+                size_t payload_count, i;
+                struct payload_node *use_node;
+
+                /* 解析配置文件 */
+                res = fh_config_parse(pinfo->info, &config);
                 if (res < 0) {
-                    E(T(make_tls_client_hello));
+                    E("ERROR: Failed to parse config file: %s", pinfo->info);
                     goto cleanup;
                 }
-                node->payload_len = len;
+
+                /* 计算需要生成的 payload 数量 */
+                payload_count = fh_config_get_payload_count(&config);
+                if (payload_count == 0) {
+                    E("ERROR: No payloads can be generated from config");
+                    fh_config_free(&config);
+                    goto cleanup;
+                }
+
+                E("Generating %zu payloads from config file", payload_count);
+
+                /* 生成所有 payload */
+                for (i = 0; i < payload_count; i++) {
+                    if (i == 0) {
+                        /* 第一个 payload 复用当前分配的 node */
+                        use_node = node;
+                    } else {
+                        /* 其余 payload 各自分配一个 node */
+                        use_node = malloc(sizeof(*use_node));
+                        if (!use_node) {
+                            E("ERROR: malloc(): %s", strerror(errno));
+                            fh_config_free(&config);
+                            goto cleanup;
+                        }
+
+                        if (current_node) {
+                            next = current_node->next;
+                            current_node->next = use_node;
+                            use_node->next = next;
+                        } else {
+                            current_node = use_node;
+                            use_node->next = use_node;
+                        }
+                    }
+
+                    len = sizeof(use_node->payload);
+                    res = fh_config_generate_payload(
+                        &config, use_node->payload, &len, i);
+                    if (res < 0) {
+                        E("ERROR: Failed to generate payload %zu", i);
+                        fh_config_free(&config);
+                        goto cleanup;
+                    }
+                    use_node->payload_len = len;
+                    current_node = use_node;
+                }
+
+                fh_config_free(&config);
                 break;
+            }
 
             case FH_PAYLOAD_HTTP_RANDOM: {
                 /*
