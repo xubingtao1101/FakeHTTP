@@ -34,6 +34,7 @@
 #define MAX_HEADERS       150
 #define MAX_HEADER_VALUES 60
 #define MAX_BODY_SIZE     24576
+#define MAX_PAYLOAD_COUNT 100000 /* 最多生成 10 万个 payload，防止 OOM */
 
 /* 去除字符串首尾空白字符 */
 static char *trim_whitespace(char *str)

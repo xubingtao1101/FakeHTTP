@@ -1096,6 +1096,8 @@ int fh_payload_setup(void)
                 struct http_config config;
                 size_t payload_count, i;
                 struct payload_node *use_node;
+                const size_t MAX_PAYLOAD_COUNT =
+                    100000; /* 最多 10 万个，防止 OOM */
 
                 /* 解析配置文件 */
                 res = fh_config_parse(pinfo->info, &config);
@@ -1112,7 +1114,23 @@ int fh_payload_setup(void)
                     goto cleanup;
                 }
 
-                E("Generating %zu payloads from config file", payload_count);
+                /* 检查 payload 数量是否超出限制 */
+                if (payload_count > MAX_PAYLOAD_COUNT) {
+                    E("ERROR: Too many payloads (%zu) would be generated from "
+                      "config",
+                      payload_count);
+                    E("ERROR: Maximum allowed is %zu payloads (approx %.1f MB "
+                      "memory)",
+                      MAX_PAYLOAD_COUNT, (MAX_PAYLOAD_COUNT * 6.0) / 1024.0);
+                    E("ERROR: Please reduce the number of methods/URIs/header "
+                      "values in your config");
+                    fh_config_free(&config);
+                    goto cleanup;
+                }
+
+                E("Generating %zu payloads from config file (approx %.1f MB "
+                  "memory)",
+                  payload_count, (payload_count * 6.0) / 1024.0);
 
                 /* 生成所有 payload */
                 for (i = 0; i < payload_count; i++) {

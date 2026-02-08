@@ -91,6 +91,19 @@ Content-Type: application/json
 
 则总共会生成：3 × 3 × 2 × 2 × 2 = 72 个不同的 payload
 
+### ⚠️ OOM 保护
+
+为防止内存耗尽（OOM），程序限制最多生成 **100,000 个 payload**（约 600 MB 内存）。
+
+如果配置文件会导致生成超过此限制的 payload，程序会拒绝启动并显示错误信息。
+
+**建议**：
+- 测试环境：50-500 个 payload
+- 生产环境：500-5,000 个 payload  
+- 高级场景：5,000-50,000 个 payload
+
+详见 `OOM_PROTECTION.md` 文档。
+
 ## 使用示例
 
 1. 创建配置文件 `http_config.conf`：
